@@ -1,4 +1,4 @@
-name: Incremental Test 3
+name: Incremental Test 4
 
 on:
   push:
@@ -13,7 +13,14 @@ permissions:
   security-events: write
 
 jobs:
-  test:
+  secrets:
+    name: Secret Detection
     runs-on: ubuntu-latest
     steps:
-      - run: echo "test"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          extra_args: --json
