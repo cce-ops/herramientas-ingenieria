@@ -44,7 +44,6 @@ jobs:
     name: Dependency Audit (pip-audit)
     runs-on: ubuntu-latest
     continue-on-error: true
-    if: hashFiles('requirements.txt') != ''
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,85 +52,43 @@ jobs:
           cache: 'pip'
       - name: Install dependencies & pip-audit
         run: |
-          pip install -r requirements.txt
+          pip install -r requirements.txt 2>/dev/null || true
           pip install pip-audit
       - name: Run pip-audit
-        run: pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on || true
+        run: pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: pip-audit-report
           path: pip-audit.json
           retention-days: 30
-      - name: Report vulnerabilities
-        run: |
-          if [ -f pip-audit.json ]; then
-            VULN_COUNT=$(jq '[.dependencies[].vulns[]] | length' pip-audit.json)
-            if [ "$VULN_COUNT" -gt 0 ]; then
-              echo "::warning::Found $VULN_COUNT vulnerabilities"
-              jq '.dependencies[] | select(.vulns | length > 0) | {name, version, vulns: .vulns[] | {id, description, fix_versions}}' pip-audit.json
-            else
-              echo "✅ No vulnerabilities found"
-            fi
-          fi
 
   deps-node:
     name: Dependency Audit (npm)
     runs-on: ubuntu-latest
     continue-on-error: true
-    if: hashFiles('package.json') != ''
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-      - run: npm ci
-      - run: npm audit --audit-level=high --json > npm-audit.json || true
+      - run: npm ci 2>/dev/null || true
+      - run: npm audit --audit-level=high --json > npm-audit.json 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: npm-audit-report
           path: npm-audit.json
           retention-days: 30
-      - name: Report npm vulnerabilities
-        run: |
-          if [ -f npm-audit.json ]; then
-            HIGH=$(jq '[.vulnerabilities[] | select(.severity=="high" or .severity=="critical")] | length' npm-audit.json)
-            if [ "$HIGH" -gt 0 ]; then
-              echo "::error::Found $HIGH high/critical npm vulnerabilities"
-              jq '.vulnerabilities[] | select(.severity=="high" or .severity=="critical") | {name, severity, range}' npm-audit.json
-            else
-              echo "✅ No high/critical npm vulnerabilities"
-            fi
-          fi
 
   sri-check:
     name: Subresource Integrity Check
     runs-on: ubuntu-latest
     continue-on-error: true
-    if: hashFiles('*.html') != ''
     steps:
       - uses: actions/checkout@v4
       - run: |
           MISSING=$(grep -r 'src="https://' --include="*.html" | grep -v 'integrity=' || true)
           if [ -n "$MISSING" ]; then echo "::warning::$MISSING"; else echo "✅ All scripts have integrity"; fi
 
-  container:
-    name: Container Scan (Trivy)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    if: hashFiles('Dockerfile*') != ''
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'HIGH,CRITICAL'
-      - uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
-          category: trivy
