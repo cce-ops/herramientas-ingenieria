@@ -1,4 +1,4 @@
-name: Incremental Test 2
+name: Incremental Test 3
 
 on:
   push:
@@ -7,6 +7,10 @@ on:
   pull_request:
   schedule:
     - cron: '0 2 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
   test:
