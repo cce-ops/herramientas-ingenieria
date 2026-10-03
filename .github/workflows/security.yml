@@ -1,0 +1,108 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  schedule:
+    - cron: '0 2 * * 1'  # Semanal lunes 2AM UTC
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  secrets:
+    name: Secret Detection (TruffleHog)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ""
+          head: ${{ github.sha }}
+          extra_args: --json --fail
+
+  sast:
+    name: Static Analysis (Semgrep + Bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: |
+          pip install semgrep bandit pip-audit
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan --config=auto --json=semgrep-results.json --error || true
+
+      - name: Run Bandit (exclude tests)
+        run: |
+          bandit -r . -x test_app.py -f json -o bandit-results.json || true
+
+      - name: Upload Semgrep results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-results.json
+          category: semgrep
+
+      - name: Upload Bandit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-results.json
+          retention-days: 30
+
+  deps:
+    name: Dependency Audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run pip-audit
+        run: |
+          pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on || true
+
+      - name: Upload pip-audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: pip-audit.json
+          retention-days: 30
+
+      - name: Fail on vulnerabilities
+        run: |
+          VULN_COUNT=$(jq '[.dependencies[].vulns[]] | length' pip-audit.json)
+          if [ "$VULN_COUNT" -gt 0 ]; then
+            echo "::error::Found $VULN_COUNT vulnerabilities in dependencies"
+            jq '.dependencies[] | select(.vulns | length > 0) | {name, version, vulns: .vulns[] | {id, description, fix_versions}}' pip-audit.json
+            exit 1
+          fi
