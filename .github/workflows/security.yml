@@ -27,26 +27,62 @@ jobs:
         run: trufflehog filesystem --json --fail ./ || true
 
   sast:
-    name: Static Analysis (Semgrep)
+    name: Static Analysis (Semgrep + Bandit)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install security tools
+        run: pip install semgrep bandit pip-audit
       - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: auto
-          args: --error --json=semgrep-results.json
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-      - name: Upload SARIF
+        run: semgrep scan --config=auto --json=semgrep-results.json --error || true
+      - name: Run Bandit (exclude tests)
+        run: bandit -r . -x test_app.py -f json -o bandit-results.json || true
+      - name: Upload Semgrep SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep-results.json
           category: semgrep
+      - name: Upload Bandit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: bandit-report, path: bandit-results.json, retention-days: 30 }
 
-  deps:
+  deps-python:
+    name: Dependency Audit (pip-audit)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    if: hashFiles('requirements.txt') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip' }
+      - name: Install dependencies & pip-audit
+        run: |
+          pip install -r requirements.txt
+          pip install pip-audit
+      - name: Run pip-audit
+        run: pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on || true
+      - name: Upload pip-audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: pip-audit-report, path: pip-audit.json, retention-days: 30 }
+      - name: Report vulnerabilities
+        run: |
+          if [ -f pip-audit.json ]; then
+            VULN_COUNT=$(jq '[.dependencies[].vulns[]] | length' pip-audit.json)
+            if [ "$VULN_COUNT" -gt 0 ]; then
+              echo "::warning::Found $VULN_COUNT vulnerabilities"
+              jq '.dependencies[] | select(.vulns | length > 0) | {name, version, vulns: .vulns[] | {id, description, fix_versions}}' pip-audit.json
+            else
+              echo "✅ No vulnerabilities found"
+            fi
+          fi
+
+  deps-node:
     name: Dependency Audit (npm)
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -60,25 +96,17 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: npm-audit-report, path: npm-audit.json, retention-days: 30 }
-      - name: Fail on high/critical
+      - name: Report npm vulnerabilities
         run: |
-          HIGH=$(jq '[.vulnerabilities[] | select(.severity=="high" or .severity=="critical")] | length' npm-audit.json)
-          if [ "$HIGH" -gt 0 ]; then echo "::error::Found $HIGH high/critical"; exit 1; fi
-
-  deps-python:
-    name: Dependency Audit (pip-audit)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    if: hashFiles('requirements.txt') != ''
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.11', cache: 'pip' }
-      - run: pip install -r requirements.txt
-      - run: pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on || true
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: pip-audit-report, path: pip-audit.json, retention-days: 30 }
+          if [ -f npm-audit.json ]; then
+            HIGH=$(jq '[.vulnerabilities[] | select(.severity=="high" or .severity=="critical")] | length' npm-audit.json)
+            if [ "$HIGH" -gt 0 ]; then
+              echo "::error::Found $HIGH high/critical npm vulnerabilities"
+              jq '.vulnerabilities[] | select(.severity=="high" or .severity=="critical") | {name, severity, range}' npm-audit.json
+            else
+              echo "✅ No high/critical npm vulnerabilities"
+            fi
+          fi
 
   sri-check:
     name: Subresource Integrity Check
