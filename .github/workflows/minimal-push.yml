@@ -1,0 +1,12 @@
+name: Minimal Push Test
+
+on:
+  push:
+    branches:
+      - security/ci-cd-automation
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "test"
