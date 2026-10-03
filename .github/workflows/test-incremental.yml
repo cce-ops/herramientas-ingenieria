@@ -1,0 +1,13 @@
+name: Incremental Test 1
+
+on:
+  push:
+    branches:
+      - security/ci-cd-automation
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "test"
