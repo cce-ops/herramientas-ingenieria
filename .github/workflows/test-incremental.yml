@@ -1,4 +1,4 @@
-name: Incremental Test 5
+name: Incremental Test 6 - Fix semgrep
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: returntocorp/semgrep-action@v1
-        with:
-          config: auto
-          args: --error
+      - name: Install Semgrep
+        run: pip install semgrep
+      - name: Run Semgrep
+        run: semgrep scan --config=auto --error
