@@ -1,0 +1,28 @@
+# Dependencias de la aplicacion unificada.
+#
+# Es la union de los tres repositorios originales:
+#   - planificador-proyectos        -> networkx, scipy, matplotlib
+#   - calculadora-viabilidad        -> numpy-financial
+#   - Dise-de-producto              -> google-genai
+#
+# streamlit >= 1.55.0 es obligatorio: a partir de esa version st.tabs acepta
+# on_change="rerun", que permite ejecutar solo la pestana visible. Sin ello la
+# app tambien funciona, pero recalculando las tres herramientas en cada
+# interaccion.
+streamlit>=1.55.0
+
+# Calculo y datos
+pandas>=2.0.0
+numpy>=1.24.0
+numpy-financial
+scipy
+
+# Grafos y visualizacion
+networkx
+plotly
+matplotlib
+
+# Proveedor de IA: solo Google Gemini.
+# google-genai sustituye a google-generativeai, que ya no recibe actualizaciones
+# (el SDK antiguo lo anuncia como finalizado desde su propio import).
+google-genai
