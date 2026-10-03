@@ -1,4 +1,4 @@
-name: Incremental Test 4
+name: Incremental Test 5
 
 on:
   push:
@@ -24,3 +24,13 @@ jobs:
         with:
           path: ./
           extra_args: --json
+
+  sast:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: returntocorp/semgrep-action@v1
+        with:
+          config: auto
+          args: --error
