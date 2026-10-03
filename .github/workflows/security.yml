@@ -2,7 +2,7 @@ name: Security Audit
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, security/ci-cd-automation]
   pull_request:
   schedule:
     - cron: '0 2 * * 1'
@@ -59,9 +59,8 @@ jobs:
           pip install pip-audit
       - name: Run pip-audit
         run: pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on || true
-      - name: Upload pip-audit results
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: pip-audit-report
           path: pip-audit.json
