@@ -1,6 +1,6 @@
 name: Security Audit
 
-on:
+'on':
   push:
     branches: [main, develop]
   pull_request:
@@ -51,14 +51,14 @@ jobs:
             echo "PYTHON_PROJECT=true" >> $GITHUB_ENV
           fi
       - name: npm audit
-        if: env.NPM_PROJECT == 'true'
+        if: ${{ env.NPM_PROJECT == 'true' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
         run: npm ci && npm audit --audit-level=high || true
       - name: pip-audit
-        if: env.PYTHON_PROJECT == 'true'
+        if: ${{ env.PYTHON_PROJECT == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
