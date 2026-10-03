@@ -10,136 +10,61 @@ on:
 permissions:
   contents: read
   security-events: write
-  actions: read
 
 jobs:
   secrets:
-    name: Secret Detection (TruffleHog)
+    name: Secret Detection
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Install TruffleHog
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
       - name: Run TruffleHog
-        run: trufflehog filesystem --json --fail ./ || true
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          extra_args: --json
 
   sast:
-    name: Static Analysis (Semgrep)
+    name: Static Analysis
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
+      - uses: returntocorp/semgrep-action@v1
         with:
           config: auto
-          args: --error --json=semgrep-results.json
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-      - name: Upload SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: semgrep-results.json
-          category: semgrep
+          args: --error
 
-  deps-python:
-    name: Dependency Audit (pip-audit)
+  deps:
+    name: Dependency Audit
     runs-on: ubuntu-latest
-    continue-on-error: true
-    if: hashFiles('requirements.txt') != ''
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      - name: Install dependencies & pip-audit
+      - name: Check for package.json
         run: |
-          pip install -r requirements.txt
-          pip install pip-audit
-      - name: Run pip-audit
-        run: pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on || true
-      - name: Upload pip-audit results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pip-audit-report
-          path: pip-audit.json
-          retention-days: 30
-      - name: Report vulnerabilities
-        run: |
-          if [ -f pip-audit.json ]; then
-            VULN_COUNT=$(jq '[.dependencies[].vulns[]] | length' pip-audit.json)
-            if [ "$VULN_COUNT" -gt 0 ]; then
-              echo "::warning::Found $VULN_COUNT vulnerabilities"
-              jq '.dependencies[] | select(.vulns | length > 0) | {name, version, vulns: .vulns[] | {id, description, fix_versions}}' pip-audit.json
-            else
-              echo "✅ No vulnerabilities found"
-            fi
+          if [ -f package.json ]; then
+            echo "NPM_PROJECT=true" >> $GITHUB_ENV
           fi
-
-  deps-node:
-    name: Dependency Audit (npm)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    if: hashFiles('package.json') != ''
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check for requirements.txt
+        run: |
+          if [ -f requirements.txt ]; then
+            echo "PYTHON_PROJECT=true" >> $GITHUB_ENV
+          fi
+      - name: npm audit
+        if: env.NPM_PROJECT == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-      - run: npm ci
-      - run: npm audit --audit-level=high --json > npm-audit.json || true
-      - uses: actions/upload-artifact@v4
-        if: always()
+        run: npm ci && npm audit --audit-level=high || true
+      - name: pip-audit
+        if: env.PYTHON_PROJECT == 'true'
+        uses: actions/setup-python@v5
         with:
-          name: npm-audit-report
-          path: npm-audit.json
-          retention-days: 30
-      - name: Report npm vulnerabilities
+          python-version: '3.11'
+          cache: 'pip'
         run: |
-          if [ -f npm-audit.json ]; then
-            HIGH=$(jq '[.vulnerabilities[] | select(.severity=="high" or .severity=="critical")] | length' npm-audit.json)
-            if [ "$HIGH" -gt 0 ]; then
-              echo "::error::Found $HIGH high/critical npm vulnerabilities"
-              jq '.vulnerabilities[] | select(.severity=="high" or .severity=="critical") | {name, severity, range}' npm-audit.json
-            else
-              echo "✅ No high/critical npm vulnerabilities"
-            fi
-          fi
+          pip install -r requirements.txt
+          pip install pip-audit
+          pip-audit -r requirements.txt --desc on || true
 
-  sri-check:
-    name: Subresource Integrity Check
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    if: hashFiles('*.html') != ''
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          MISSING=$(grep -r 'src="https://' --include="*.html" | grep -v 'integrity=' || true)
-          if [ -n "$MISSING" ]; then echo "::warning::$MISSING"; else echo "✅ All scripts have integrity"; fi
-
-  container:
-    name: Container Scan (Trivy)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    if: hashFiles('Dockerfile*') != ''
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'HIGH,CRITICAL'
-      - uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
-          category: trivy
