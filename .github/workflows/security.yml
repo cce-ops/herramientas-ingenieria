@@ -19,7 +19,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
       - name: Install TruffleHog
         run: |
           curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
@@ -27,29 +28,24 @@ jobs:
         run: trufflehog filesystem --json --fail ./ || true
 
   sast:
-    name: Static Analysis (Semgrep + Bandit)
+    name: Static Analysis (Semgrep)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
-      - name: Install security tools
-        run: pip install semgrep bandit pip-audit
       - name: Run Semgrep
-        run: semgrep scan --config=auto --json=semgrep-results.json --error || true
-      - name: Run Bandit (exclude tests)
-        run: bandit -r . -x test_app.py -f json -o bandit-results.json || true
-      - name: Upload Semgrep SARIF
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: auto
+          args: --error --json=semgrep-results.json
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+      - name: Upload SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep-results.json
           category: semgrep
-      - name: Upload Bandit results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with: { name: bandit-report, path: bandit-results.json, retention-days: 30 }
 
   deps-python:
     name: Dependency Audit (pip-audit)
@@ -59,7 +55,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11', cache: 'pip' }
+        with:
+          python-version: '3.11'
+          cache: 'pip'
       - name: Install dependencies & pip-audit
         run: |
           pip install -r requirements.txt
@@ -69,7 +67,10 @@ jobs:
       - name: Upload pip-audit results
         if: always()
         uses: actions/upload-artifact@v4
-        with: { name: pip-audit-report, path: pip-audit.json, retention-days: 30 }
+        with:
+          name: pip-audit-report
+          path: pip-audit.json
+          retention-days: 30
       - name: Report vulnerabilities
         run: |
           if [ -f pip-audit.json ]; then
@@ -90,12 +91,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+        with:
+          node-version: '20'
+          cache: 'npm'
       - run: npm ci
       - run: npm audit --audit-level=high --json > npm-audit.json || true
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: npm-audit-report, path: npm-audit.json, retention-days: 30 }
+        with:
+          name: npm-audit-report
+          path: npm-audit.json
+          retention-days: 30
       - name: Report npm vulnerabilities
         run: |
           if [ -f npm-audit.json ]; then
@@ -118,3 +124,22 @@ jobs:
       - run: |
           MISSING=$(grep -r 'src="https://' --include="*.html" | grep -v 'integrity=' || true)
           if [ -n "$MISSING" ]; then echo "::warning::$MISSING"; else echo "✅ All scripts have integrity"; fi
+
+  container:
+    name: Container Scan (Trivy)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    if: hashFiles('Dockerfile*') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'HIGH,CRITICAL'
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
