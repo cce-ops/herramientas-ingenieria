@@ -1,0 +1,66 @@
+# Pre-commit hooks for security and code quality
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Secret detection
+  - repo: https://github.com/trufflesecurity/trufflehog
+    rev: v3.88.0
+    hooks:
+      - id: trufflehog
+        name: TruffleHog Secret Detection
+        entry: trufflehog filesystem --no-verification --fail
+        language: system
+        types: [file]
+        exclude: ^(requirements\.txt|README\.md)$
+
+  # SAST with Semgrep
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.179.0
+    hooks:
+      - id: semgrep
+        name: Semgrep SAST
+        entry: semgrep scan --config=auto --error
+        language: system
+        types: [python]
+        exclude: ^(test_app\.py|node_modules/|\.venv/|venv/|env/)$
+
+  # Python SAST with Bandit
+  - repo: local
+    hooks:
+      - id: bandit
+        name: Bandit Python SAST
+        entry: bandit -r . -x test_app.py -f json -o /dev/null
+        language: system
+        types: [python]
+        exclude: ^test_app\.py$
+
+  # pip-audit for dependencies
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit
+        entry: bash -c 'if [ -f requirements.txt ]; then pip-audit -r requirements.txt --desc on; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  # Code formatting
+  - repo: https://github.com/psf/black
+    rev: 24.4.0
+    hooks:
+      - id: black
+        name: Black formatter
+        language: system
+        types: [python]
+        exclude: ^test_app\.py$
+
+  # Import sorting
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        name: isort import sorting
+        language: system
+        types: [python]
+        exclude: ^test_app\.py$

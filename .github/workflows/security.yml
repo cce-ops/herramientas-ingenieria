@@ -1,0 +1,94 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main, develop, security/ci-cd-automation]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  secrets:
+    name: Secret Detection (TruffleHog)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          extra_args: --json
+
+  sast:
+    name: Static Analysis (Semgrep)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Semgrep
+        run: pip install semgrep
+      - name: Run Semgrep
+        run: semgrep scan --config=auto --error --json=semgrep-results.json || true
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-results.json
+          category: semgrep
+
+  deps-python:
+    name: Dependency Audit (pip-audit)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies & pip-audit
+        run: |
+          pip install -r requirements.txt 2>/dev/null || true
+          pip install pip-audit
+      - name: Run pip-audit
+        run: pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-report
+          path: pip-audit.json
+          retention-days: 30
+
+  deps-node:
+    name: Dependency Audit (npm)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci 2>/dev/null || true
+      - run: npm audit --audit-level=high --json > npm-audit.json 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: npm-audit-report
+          path: npm-audit.json
+          retention-days: 30
+
+  sri-check:
+    name: Subresource Integrity Check
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          MISSING=$(grep -r 'src="https://' --include="*.html" | grep -v 'integrity=' || true)
+          if [ -n "$MISSING" ]; then echo "::warning::$MISSING"; else echo "✅ All scripts have integrity"; fi
+
