@@ -2,7 +2,7 @@ name: Security Audit
 
 on:
   push:
-    branches: [main, develop, security/ci-cd-automation]
+    branches: [main, develop, security/ci-cd-automation, security/hardening-pin-sha-cooldown]
   pull_request:
 
 permissions:
@@ -15,10 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: trufflesecurity/trufflehog@main
+      - uses: trufflesecurity/trufflehog@4dd8831c5f12599465d4d45c3c447b4018a34c85 # v3.97.9
         with:
           path: ./
           extra_args: --json
@@ -28,16 +28,16 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install Semgrep
         run: pip install semgrep
       - name: Run Semgrep
-        run: semgrep scan --config=auto --error --json=semgrep-results.json || true
+        run: semgrep scan --config=auto --error --sarif -o semgrep-results.sarif || true
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@7999b86c43a865dc79d8923397f35af22de63401 # v4
         with:
-          sarif_file: semgrep-results.json
+          sarif_file: semgrep-results.sarif
           category: semgrep
 
   deps-python:
@@ -45,50 +45,77 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.11'
-          cache: 'pip'
       - name: Install dependencies & pip-audit
         run: |
-          pip install -r requirements.txt 2>/dev/null || true
+          if [ ! -f requirements.txt ]; then echo "No requirements.txt, skipping"; exit 0; fi
+          pip install -r requirements.txt
           pip install pip-audit
       - name: Run pip-audit
-        run: pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on 2>/dev/null || true
-      - uses: actions/upload-artifact@v7
+        run: |
+          if [ ! -f requirements.txt ]; then echo "No requirements.txt, skipping"; exit 0; fi
+          pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on || true
+      - name: Upload pip-audit results
         if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: pip-audit-report
           path: pip-audit.json
           retention-days: 30
+          if-no-files-found: warn
 
   deps-node:
     name: Dependency Audit (npm)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '20'
-          cache: 'npm'
-      - run: npm ci 2>/dev/null || true
-      - run: npm audit --audit-level=high --json > npm-audit.json 2>/dev/null || true
-      - uses: actions/upload-artifact@v7
+      - name: Install & audit
+        run: |
+          if [ ! -f package.json ]; then echo "No package.json, skipping"; exit 0; fi
+          npm ci 2>/dev/null || npm install 2>/dev/null || true
+          npm audit --audit-level=high --json > npm-audit.json 2>/dev/null || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: npm-audit-report
           path: npm-audit.json
           retention-days: 30
+          if-no-files-found: warn
 
   sri-check:
     name: Subresource Integrity Check
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: |
           MISSING=$(grep -r 'src="https://' --include="*.html" | grep -v 'integrity=' || true)
           if [ -n "$MISSING" ]; then echo "::warning::$MISSING"; else echo "✅ All scripts have integrity"; fi
 
+  container:
+    name: Container Scan (Trivy)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check for Dockerfile
+        run: |
+          if ! ls Dockerfile* 1>/dev/null 2>&1; then echo "No Dockerfile, skipping"; exit 0; fi
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'HIGH,CRITICAL'
+      - uses: github/codeql-action/upload-sarif@7999b86c43a865dc79d8923397f35af22de63401 # v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
