@@ -13,7 +13,7 @@ streamlit>=1.55.0
 
 # Calculo y datos
 pandas>=3.0.6
-numpy>=1.24.0
+numpy>=2.5.3
 numpy-financial
 scipy
 
