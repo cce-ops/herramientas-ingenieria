@@ -9,7 +9,7 @@
 # on_change="rerun", que permite ejecutar solo la pestana visible. Sin ello la
 # app tambien funciona, pero recalculando las tres herramientas en cada
 # interaccion.
-streamlit>=1.55.0
+streamlit>=1.64.0
 
 # Calculo y datos
 pandas>=3.0.6
