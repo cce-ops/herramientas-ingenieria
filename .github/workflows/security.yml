@@ -60,7 +60,7 @@ jobs:
           pip-audit -r requirements.txt --format=json --output=pip-audit.json --desc on || true
       - name: Upload pip-audit results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: pip-audit-report
           path: pip-audit.json
@@ -81,7 +81,7 @@ jobs:
           if [ ! -f package.json ]; then echo "No package.json, skipping"; exit 0; fi
           npm ci 2>/dev/null || npm install 2>/dev/null || true
           npm audit --audit-level=high --json > npm-audit.json 2>/dev/null || true
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: npm-audit-report
