@@ -53,6 +53,7 @@ CODIGOS_SIN_REINTENTO = {400, 401, 403, 404}
 PROVEEDORES: dict[str, dict] = {
     "Google Gemini": {
         "modelos": {
+            "Gemini Flash Latest (Alias actualizado automáticamente)": "gemini-flash-latest",
             "Gemini 3.8 Flash (Más inteligente, flujos complejos)": "gemini-3.8-flash",
             "Gemini 3.8 Live (Voz, baja latencia)": "gemini-3.8-live",
             "Gemini 3.8 Live Extended Thinking (Alto razonamiento)": (
