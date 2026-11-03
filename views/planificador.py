@@ -905,6 +905,13 @@ def _modo_evm_por_actividad() -> None:
                 f"**SV = EV - PV = {ev_total_act:,.0f} - {pv_total_act:,.0f} = {sv_final_act:,.0f} EUR** (retraso si negativo)."
             )
         st.metric("CV (€)", f"{cv_final_act:,.2f}", delta="Sobrecoste importante" if cv_final_act < 0 else "Ahorro")
+        st.metric("SV (€)", f"{sv_final_act:,.2f}", delta="Retraso" if sv_final_act < 0 else "Adelantado")
+    with col_b2:
+        with st.expander("❓ Fórmulas CPI y SPI"):
+            st.markdown(
+                f"**CPI = EV / AC = {ev_total_act:,.0f} / {ac_total_act:,.0f} = {cpi_final_act:.2f}** (baja eficiencia si <1). "
+                f"**SPI = EV / PV = {ev_total_act:,.0f} / {pv_total_act:,.0f} = {spi_final_act:.2f}** (retraso si <1)."
+            )
         st.metric("CPI", f"{cpi_final_act:.2f}")
         st.metric("SPI", f"{spi_final_act:.2f}")
 
@@ -929,10 +936,9 @@ def _modo_evm_por_actividad() -> None:
         st.metric("VAC (€)", f"{vac_act:,.2f}")
 
     st.markdown("---")
-    st.subheader("4. Conclusiones (resumen del ejercicio resuelto)")
+    st.subheader("4. Conclusiones")
     st.markdown(
-        "Proyecto ligeramente retrasado (SPI = 0,93) pero con sobrecoste muy alto (CPI = 0,53). "
-        "Si nada cambia, coste final ~18,7 k€. Para 10 k€ hay que duplicar eficiencia (TCPI ~2,26): poco realista -> replanificar."
+        f"Proyecto ligeramente retrasado (SPI = {spi_final_act:.2f}) pero con sobrecoste muy alto (CPI = {cpi_final_act:.2f}). Si nada cambia, coste final ~{eac_act:,.0f} EUR. Para {bac_act:,.0f} EUR hay que duplicar eficiencia (TCPI = {tcpi_act:.2f}): poco realista -> replanificar."
     )
 
     st.markdown("---")
