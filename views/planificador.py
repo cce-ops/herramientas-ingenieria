@@ -900,7 +900,10 @@ def _modo_evm_por_actividad() -> None:
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         with st.expander("❓ Fórmulas CV y SV"):
-            st.markdown("CV = -3400 € (sobrecoste importante). SV = -300 € (ligero retraso respecto al plan).")
+            st.markdown(
+                f"**CV = EV - AC = {ev_total_act:,.0f} - {ac_total_act:,.0f} = {cv_final_act:,.0f} EUR** (sobrecoste si negativo). "
+                f"**SV = EV - PV = {ev_total_act:,.0f} - {pv_total_act:,.0f} = {sv_final_act:,.0f} EUR** (retraso si negativo)."
+            )
         st.metric("CV (€)", f"{cv_final_act:,.2f}", delta="Sobrecoste importante" if cv_final_act < 0 else "Ahorro")
         st.metric("CPI", f"{cpi_final_act:.2f}")
         st.metric("SPI", f"{spi_final_act:.2f}")
