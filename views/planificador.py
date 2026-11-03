@@ -913,19 +913,19 @@ def _modo_evm_por_actividad() -> None:
     col_d1, col_d2, col_d3, col_d4 = st.columns(4)
     with col_d1:
         with st.expander("❓ Fórmula EAC"):
-            st.markdown("**EAC = BAC / CPI = 10000 / 0,53 = 18.721 €** (si se mantiene el rendimiento actual).")
+            st.markdown(f"EAC = BAC / CPI = {bac_act:,.0f} / {cpi_final_act:.2f} = {eac_act:,.0f} EUR")
         st.metric("EAC (€)", f"{eac_act:,.2f}", delta=f"{vac_act:,.0f} € vs BAC" if vac_act != 0 else None)
     with col_d2:
         with st.expander("❓ Fórmula ETC"):
-            st.markdown("**ETC = EAC - AC = 18721 - 7300 = 11.421 €** (lo que falta por gastar estimado para terminar).")
+            st.markdown(f"ETC = EAC - AC = {eac_act:,.0f} - {ac_total_act:,.0f} = {etc_act:,.0f} EUR (lo que falta por gastar estimado).")
         st.metric("ETC (€)", f"{etc_act:,.2f}")
     with col_d3:
         with st.expander("❓ Fórmula TCPI(BAC)"):
-            st.markdown("**TCPI(BAC) = (BAC - EV) / (BAC - AC) = (10000 - 3900) / (10000 - 7300) = 6100 / 2700 = 2,26**. Para cerrar en 10 k€ hay que duplicar la eficiencia.")
+            st.markdown(f"TCPI(BAC) = ({bac_act:,.0f} - {ev_total_act:,.0f}) / ({bac_act:,.0f} - {ac_total_act:,.0f}) = {tcpi_act:.2f}. Para cerrar en BAC hay que duplicar eficiencia.")
         st.metric("TCPI(BAC)", f"{tcpi_act:.2f}")
     with col_d4:
         with st.expander("❓ Fórmula VAC"):
-            st.markdown("**VAC = BAC - EAC = 10000 - 18721 = -8721 €**  ->  se espera terminar muy por encima del presupuesto.")
+            st.markdown(f"VAC = BAC - EAC = {bac_act:,.0f} - {eac_act:,.0f} = {vac_act:,.0f} EUR. Se espera terminar por encima si VAC < 0.")
         st.metric("VAC (€)", f"{vac_act:,.2f}")
 
     st.markdown("---")
