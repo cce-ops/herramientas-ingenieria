@@ -88,6 +88,23 @@ def render(_ctx: dict) -> None:
         key="viab__flujo_base",
     )
 
+    # Opción académica: Payback Simple o Descontado.
+    modo_payback = st.selectbox(
+        "Modo de cálculo del Payback:",
+        [
+            "Simple (flujos sin descontar)",
+            "Descontado (flujos actualizados — como en ejercicios académicos)",
+        ],
+        index=0,
+        key="viab__modo_payback",
+        help=(
+            "El 'Payback Descontado' usa los flujos actualizados a la tasa de "
+            "descuento. Es el método que piden algunos ejercicios (p. ej. PR con "
+            "flujos descontados). La nota sobre 'flujos netos de caja' se refiere a "
+            "que no se incluye amortización contable, no al descuento."
+        ),
+    )
+
     # 1. Tabla de flujos de caja
     st.subheader("1. Edición de Flujos de Caja")
     df_inicial = pd.DataFrame(
@@ -119,21 +136,34 @@ def render(_ctx: dict) -> None:
     tasa = tasa_descuento / 100
     anios = list(range(int(vida_util) + 1))
 
+    # Nota académica: los flujos deben ser NETOS DE CAJA (sin amortización contable).
+    # La amortización no es una salida de caja; la inversión inicial (año 0) ya se
+    # contabiliza como salida de caja.
     flujos_actualizados = [
         f / ((1 + tasa) ** t) for t, f in zip(anios, flujos_totales)
     ]
     flujos_acumulados = np.cumsum(flujos_totales).tolist()
     flujos_acumulados_actualizados = np.cumsum(flujos_actualizados).tolist()
 
+    usar_actualizado = modo_payback.startswith("Descontado")
+
     # Payback con interpolacion lineal.
     payback = None
-    for i, acumulado in enumerate(flujos_acumulados):
+    acumulados_payback = (
+        flujos_acumulados_actualizados if usar_actualizado else flujos_acumulados
+    )
+    for i, acumulado in enumerate(acumulados_payback):
         if acumulado >= 0:
             if i == 0:
                 payback = 0.0
             else:
-                acumulado_anterior = abs(flujos_acumulados[i - 1])
-                flujo_del_anio = flujos_totales[i]
+                acumulado_anterior = abs(acumulados_payback[i - 1])
+                # Para el payback descontado, el flujo del año también debe ser el actualizado.
+                flujo_del_anio = (
+                    flujos_actualizados[i]
+                    if usar_actualizado
+                    else flujos_totales[i]
+                )
                 fraccion_anio = (
                     acumulado_anterior / flujo_del_anio if flujo_del_anio != 0 else 0
                 )
