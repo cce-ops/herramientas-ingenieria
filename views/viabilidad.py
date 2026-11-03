@@ -93,7 +93,7 @@ def render(_ctx: dict) -> None:
         "Modo de cálculo del Payback:",
         [
             "Simple (flujos sin descontar)",
-            "Descontado (flujos actualizados — como en ejercicios académicos)",
+            "Descontado (flujos actualizados)",
         ],
         index=0,
         key="viab__modo_payback",
