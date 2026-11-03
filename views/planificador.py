@@ -888,7 +888,7 @@ def _modo_evm_por_actividad() -> None:
         st.metric("PV (€)", f"{pv_total_act:,.2f}")
     with col_a3:
         with st.expander("❓ ¿Cómo se calcula EV?"):
-            st.markdown(f"**EV** = suma del valor real: A=100%, B=100%, C={float(df_editado_act[chr(39)+chr(37)+chr(32)+chr(82)+chr(101)+chr(97)+chr(108)+chr(32)+chr(67)+chr(111)+chr(109)+chr(112)+chr(108)+chr(101)+chr(116)+chr(97)+chr(100)+chr(111)+chr(39)].iloc[2]):.0f}% = {ev_total_act:,.0f} €.")
+            st.markdown(f"**EV** = suma del valor real = {ev_total_act:,.0f} € (A y B completas, C según % real editado).")
         st.metric("EV (€)", f"{ev_total_act:,.2f}")
     with col_a4:
         with st.expander("❓ ¿Cómo se calcula AC?"):
