@@ -427,14 +427,14 @@ def _modo_evm_estandar() -> None:
             - **PV** (Planned Value): Valor que debería haberse ganado según lo planificado.
             - **EV** (Earned Value): Valor realmente ganado con el trabajo realizado.
             - **AC** (Actual Cost): Coste real incurrido hasta la fecha.
-            - **SV** = EV − PV: Variación del cronograma (positivo = adelantado).
-            - **CV** = EV − AC: Variación del coste (positivo = por debajo de presupuesto).
+            - **SV** = EV - PV: Variación del cronograma (positivo = adelantado).
+            - **CV** = EV - AC: Variación del coste (positivo = por debajo de presupuesto).
             - **SPI** = EV / PV: Índice de desempeño del cronograma (>1 adelantado, <1 retrasado).
             - **CPI** = EV / AC: Índice de desempeño del coste (>1 por debajo, <1 por encima).
-            - **EAC** = AC + (BAC − EV) / CPI (fórmula típica): Estimación del coste total.
-            - **ETC** = EAC − AC: Coste restante estimado para terminar.
-            - **VAC** = BAC − EAC: Variación estimada al finalizar el proyecto.
-            - **TCPI** = (BAC − EV) / (BAC − AC): Índice de desempeño necesario para cumplir BAC.
+            - **EAC** = AC + (BAC - EV) / CPI (fórmula típica): Estimación del coste total.
+            - **ETC** = EAC - AC: Coste restante estimado para terminar.
+            - **VAC** = BAC - EAC: Variación estimada al finalizar el proyecto.
+            - **TCPI** = (BAC - EV) / (BAC - AC): Índice de desempeño necesario para cumplir BAC.
             """
         )
 
@@ -645,7 +645,7 @@ def _modo_evm_estandar() -> None:
     col_c1, col_c2 = st.columns(2)
     with col_c1:
         with st.expander("❓ ¿Cómo se calcula SV (Schedule Variance)?"):
-            st.markdown("**SV** = EV − PV. SV > 0 indica que se ha ganado más valor del previsto (adelantado); SV < 0 indica retraso.")
+            st.markdown("**SV** = EV - PV. SV > 0 indica que se ha ganado más valor del previsto (adelantado); SV < 0 indica retraso.")
         st.metric("SV Final (€)", f"{sv_final:,.2f}")
         if sv_final > 0:
             st.info("Adelantado (EV > PV).")
@@ -656,7 +656,7 @@ def _modo_evm_estandar() -> None:
 
     with col_c2:
         with st.expander("❓ ¿Cómo se calcula CV (Cost Variance)?"):
-            st.markdown("**CV** = EV − AC. CV > 0 indica que el valor ganado supera lo gastado (ahorro); CV < 0 indica sobrecoste.")
+            st.markdown("**CV** = EV - AC. CV > 0 indica que el valor ganado supera lo gastado (ahorro); CV < 0 indica sobrecoste.")
         st.metric("CV Final (€)", f"{cv_final:,.2f}")
         if cv_final > 0:
             st.info("Ahorro respecto al presupuesto.")
@@ -673,17 +673,17 @@ def _modo_evm_estandar() -> None:
     with col_d1:
         with st.expander("❓ ¿Cómo se calcula EAC?"):
             st.markdown(
-                "**EAC** = AC + (BAC − EV) / CPI. Es la estimación del coste total "
+                "**EAC** = AC + (BAC - EV) / CPI. Es la estimación del coste total "
                 "si el rendimiento futuro (CPI) sigue igual que hasta ahora."
             )
         st.metric("EAC (€)", f"{eac:,.2f}")
     with col_d2:
         with st.expander("❓ ¿Cómo se calcula ETC?"):
-            st.markdown("**ETC** = EAC − AC. Es lo que falta por gastar (estimado) para completar el proyecto.")
+            st.markdown("**ETC** = EAC - AC. Es lo que falta por gastar (estimado) para completar el proyecto.")
         st.metric("ETC (€)", f"{etc:,.2f}")
     with col_d3:
         with st.expander("❓ ¿Cómo se calcula VAC?"):
-            st.markdown("**VAC** = BAC − EAC. Es la diferencia estimada al finalizar: positivo = ahorro, negativo = sobrecoste estimado.")
+            st.markdown("**VAC** = BAC - EAC. Es la diferencia estimada al finalizar: positivo = ahorro, negativo = sobrecoste estimado.")
         st.metric("VAC (€)", f"{vac:,.2f}")
         if vac > 0:
             st.info("Se espera terminar por debajo del presupuesto.")
@@ -694,7 +694,7 @@ def _modo_evm_estandar() -> None:
     with col_d4:
         with st.expander("❓ ¿Cómo se calcula TCPI?"):
             st.markdown(
-                "**TCPI** = (BAC − EV) / (BAC − AC). Índice de desempeño que debe mantenerse "
+                "**TCPI** = (BAC - EV) / (BAC - AC). Índice de desempeño que debe mantenerse "
                 "en el trabajo restante para cumplir exactamente con el BAC."
             )
         st.metric("TCPI", f"{tcpi:.3f}")
@@ -802,32 +802,153 @@ def _modo_evm_estandar() -> None:
 
 
 def _modo_evm_por_actividad() -> None:
-    """Calcula EVM por actividades (ejercicio del PDF)."""
+    """Calcula EVM por actividades (ejercicio del PDF) — completo como en el ejercicio resuelto."""
     st.markdown("---")
     st.markdown("### ⚙️ Parámetros del Ejercicio")
-    bac_act = st.number_input("BAC (€)", min_value=0.0, value=10000.0, step=500.0, key="act_bac")
-    ac_act = st.number_input("AC (€)", min_value=0.0, value=7300.0, step=100.0, key="act_ac")
-    df = pd.DataFrame({"Actividad":["A","B","C","D","E"],"% Presupuesto":[10,20,30,20,20],"% Real":[100,100,30,0,0]})
-    df_edit = st.data_editor(df, hide_index=True, key="act_tbl")
-    plan_a = st.number_input("Plan A %", 0, 100, 100, key="pl_a")
-    plan_b = st.number_input("Plan B %", 0, 100, 100, key="pl_b")
-    plan_c = st.number_input("Plan C %", 0, 100, 40, key="pl_c")
-    pv = float(bac_act)*(plan_a*10 + plan_b*20 + plan_c*30)/10000
-    ev = float(bac_act)*(1.0*10 + 1.0*20 + 0.3*30)/100
-    cv = ev - float(ac_act)
-    sv = ev - pv
-    cpi = ev / float(ac_act) if float(ac_act) > 0 else 0
-    spi = ev / pv if pv > 0 else 0
-    st.metric("PV", f"{pv:.2f} €")
-    st.metric("EV", f"{ev:.2f} €")
-    st.metric("CV", f"{cv:.2f} €")
-    st.metric("SV", f"{sv:.2f} €")
-    st.metric("CPI", f"{cpi:.2f}")
-    st.metric("SPI", f"{spi:.2f}")
+    st.caption(
+        "Según el calendario de ejecución, al finalizar la primera semana laboral "
+        "(viernes 10 de julio 2026): A y B terminadas, C iniciada al 40%. "
+        "AC real reportado = 7300 € (sobrecoste importante)."
+    )
+
+    bac_act = st.number_input("BAC (Budget at Completion) €", min_value=0.0, value=10000.0, step=500.0, format="%.0f", key="act_bac")
+    ac_act = st.number_input("AC (Actual Cost) €", min_value=0.0, value=7300.0, step=100.0, format="%.0f", key="act_ac")
+
+    datos_iniciales_act = {
+        "Actividad": ["A", "B", "C", "D", "E"],
+        "% Presupuesto": [10.0, 20.0, 30.0, 20.0, 20.0],
+        "% Real Completado": [100.0, 100.0, 30.0, 0.0, 0.0],
+    }
+    df_inicial_act = pd.DataFrame(datos_iniciales_act)
+
+    st.markdown("### 📋 Actividades (Edita % Real si cambia)")
+    df_editado_act = st.data_editor(
+        df_inicial_act,
+        column_config={
+            "Actividad": st.column_config.TextColumn("Actividad", disabled=True),
+            "% Presupuesto": st.column_config.NumberColumn("% Presupuesto", min_value=0.0, max_value=100.0, step=1.0, format="%.1f"),
+            "% Real Completado": st.column_config.NumberColumn("% Real Completado", min_value=0.0, max_value=100.0, step=1.0, format="%.1f"),
+        },
+        hide_index=True, width="stretch", key="evm__tabla_act",
+    )
+
+    st.markdown("### 📅 Estado del Plan al Punto de Control")
+    col_plan_a, col_plan_b, col_plan_c = st.columns(3)
+    with col_plan_a:
+        plan_a = st.number_input("A completado según plan (%)", min_value=0.0, max_value=100.0, value=100.0, step=1.0, key="evm_plan_a")
+    with col_plan_b:
+        plan_b = st.number_input("B completado según plan (%)", min_value=0.0, max_value=100.0, value=100.0, step=1.0, key="evm_plan_b")
+    with col_plan_c:
+        plan_c = st.number_input("C completado según plan (%)", min_value=0.0, max_value=100.0, value=40.0, step=1.0, key="evm_plan_c", help="Según calendario: 2/5 de C = 40% planificado")
+
+    actividades = []
+    pv_total_act = 0.0
+    ev_total_act = 0.0
+    ac_total_act = float(ac_act)
+    plan_vals = {"A": float(plan_a), "B": float(plan_b), "C": float(plan_c), "D": 0.0, "E": 0.0}
+
+    for _, row in df_editado_act.iterrows():
+        act = str(row["Actividad"])
+        pct = float(row["% Presupuesto"])
+        real = float(row["% Real Completado"])
+        cost_plan = float(bac_act) * pct / 100.0
+        plan_pct = plan_vals.get(act, 0.0)
+        pv = cost_plan * plan_pct / 100.0
+        ev = cost_plan * real / 100.0
+        actividades.append({
+            "Actividad": act,
+            "Coste Planificado (€)": cost_plan,
+            "% Plan al control": plan_pct,
+            "PV (€)": pv,
+            "EV (€)": ev,
+            "% Real": real,
+        })
+        pv_total_act += pv
+        ev_total_act += ev
+
+    cv_final_act = ev_total_act - ac_total_act
+    sv_final_act = ev_total_act - pv_total_act
+    spi_final_act = ev_total_act / pv_total_act if pv_total_act > 0 else 0.0
+    cpi_final_act = ev_total_act / ac_total_act if ac_total_act > 0 else 0.0
+    eac_act = ac_total_act + (float(bac_act) - ev_total_act) / cpi_final_act if cpi_final_act > 0 else 0.0
+    etc_act = eac_act - ac_total_act
+    vac_act = float(bac_act) - eac_act
+    tcpi_act = (float(bac_act) - ev_total_act) / (float(bac_act) - ac_total_act) if (float(bac_act) - ac_total_act) != 0 else 0.0
+
+    st.markdown("---")
+    st.subheader("1. Variables Básicas de EVM")
+    col_a1, col_a2, col_a3, col_a4 = st.columns(4)
+    with col_a1:
+        with st.expander("❓ ¿Cómo se calcula BAC?"):
+            st.markdown("**BAC** = Presupuesto total aprobado = 10.000 €.")
+        st.metric("BAC (€)", f"{float(bac_act):,.2f}")
+    with col_a2:
+        with st.expander("❓ ¿Cómo se calcula PV?"):
+            st.markdown("**PV** = suma de lo que el calendario dice que debe haberse ganado: A (100%) + B (100%) + C (40%) = 4200 €.")
+        st.metric("PV (€)", f"{pv_total_act:,.2f}")
+    with col_a3:
+        with st.expander("❓ ¿Cómo se calcula EV?"):
+            st.markdown("**EV** = suma del valor real ganado: A (100%) + B (100%) + C (30%) = 3900 €.")
+        st.metric("EV (€)", f"{ev_total_act:,.2f}")
+    with col_a4:
+        with st.expander("❓ ¿Cómo se calcula AC?"):
+            st.markdown("**AC** = Coste real acumulado = 7300 €.")
+        st.metric("AC (€)", f"{float(ac_total_act):,.2f}")
+
+    st.markdown("---")
+    st.subheader("2. Métricas EVM (como en el ejercicio resuelto)")
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        with st.expander("❓ Fórmulas CV y SV"):
+            st.markdown("CV = -3400 € (sobrecoste importante). SV = -300 € (ligero retraso respecto al plan).")
+        st.metric("CV (€)", f"{cv_final_act:,.2f}", delta="Sobrecoste importante" if cv_final_act < 0 else "Ahorro")
+        st.metric("CPI", f"{cpi_final_act:.2f}")
+        st.metric("SPI", f"{spi_final_act:.2f}")
+
+    st.markdown("---")
+    st.subheader("3. Proyección de Coste")
+    col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+    with col_d1:
+        with st.expander("❓ Fórmula EAC"):
+            st.markdown("**EAC = BAC / CPI = 10000 / 0,53 = 18.721 €** (si se mantiene el rendimiento actual).")
+        st.metric("EAC (€)", f"{eac_act:,.2f}", delta=f"{vac_act:,.0f} € vs BAC" if vac_act != 0 else None)
+    with col_d2:
+        with st.expander("❓ Fórmula ETC"):
+            st.markdown("**ETC = EAC - AC = 18721 - 7300 = 11.421 €** (lo que falta por gastar estimado para terminar).")
+        st.metric("ETC (€)", f"{etc_act:,.2f}")
+    with col_d3:
+        with st.expander("❓ Fórmula TCPI(BAC)"):
+            st.markdown("**TCPI(BAC) = (BAC - EV) / (BAC - AC) = (10000 - 3900) / (10000 - 7300) = 6100 / 2700 = 2,26**. Para cerrar en 10 k€ hay que duplicar la eficiencia.")
+        st.metric("TCPI(BAC)", f"{tcpi_act:.2f}")
+    with col_d4:
+        with st.expander("❓ Fórmula VAC"):
+            st.markdown("**VAC = BAC - EAC = 10000 - 18721 = -8721 €**  ->  se espera terminar muy por encima del presupuesto.")
+        st.metric("VAC (€)", f"{vac_act:,.2f}")
+
+    st.markdown("---")
+    st.subheader("4. Conclusiones (resumen del ejercicio resuelto)")
+    st.markdown(
+        "Proyecto ligeramente retrasado (SPI = 0,93) pero con sobrecoste muy alto (CPI = 0,53). "
+        "Si nada cambia, coste final ~18,7 k€. Para 10 k€ hay que duplicar eficiencia (TCPI ~2,26): poco realista -> replanificar."
+    )
+
+    st.markdown("---")
+    st.subheader("5. Desglose por Actividad")
+    df_actividades = pd.DataFrame(actividades)
+    st.dataframe(
+        df_actividades.style.format({
+            "Coste Planificado (€)": "{:.2f} €",
+            "PV (€)": "{:.2f} €",
+            "EV (€)": "{:.2f} €",
+            "% Plan al control": "{:.1f} %",
+            "% Real": "{:.1f} %",
+        }),
+        hide_index=True, width="stretch",
+    )
 
 
 def _modo_evm() -> None:
-    """Ventana de EVM."""
+    "Ventana de EVM."
     st.markdown("### 📊 Gestión del Valor Ganado (EVM)")
     with st.expander("❓ Conceptos Básicos...", expanded=True):
         st.markdown("- BAC... - PV... - EV... - AC... - SV... - CV... - SPI... - CPI...")
@@ -842,7 +963,7 @@ def _modo_evm() -> None:
 # Punto de entrada de la vista (modificado para incluir EVM)
 # ---------------------------------------------------------------------------
 def render(_ctx: dict) -> None:
-    """Dibuja el Planificador con sus dos modos."""
+    "Dibuja el Planificador con sus dos modos."
     st.markdown(
         "Planificación, análisis y seguimiento de proyectos de ingeniería "
         "mediante PERT, CPM, Gantt y método de Zaderenko."
