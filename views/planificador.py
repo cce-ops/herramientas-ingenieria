@@ -880,19 +880,19 @@ def _modo_evm_por_actividad() -> None:
     col_a1, col_a2, col_a3, col_a4 = st.columns(4)
     with col_a1:
         with st.expander("❓ ¿Cómo se calcula BAC?"):
-            st.markdown("**BAC** = Presupuesto total aprobado = 10.000 €.")
+            st.markdown(f"**BAC** = Presupuesto total aprobado = {float(bac_act):,.0f} €.")
         st.metric("BAC (€)", f"{float(bac_act):,.2f}")
     with col_a2:
         with st.expander("❓ ¿Cómo se calcula PV?"):
-            st.markdown("**PV** = suma de lo que el calendario dice que debe haberse ganado: A (100%) + B (100%) + C (40%) = 4200 €.")
+            st.markdown(f"**PV** = suma según calendario (A={plan_a}%, B={plan_b}%, C={plan_c}%): {pv_total_act:,.0f} €.")
         st.metric("PV (€)", f"{pv_total_act:,.2f}")
     with col_a3:
         with st.expander("❓ ¿Cómo se calcula EV?"):
-            st.markdown("**EV** = suma del valor real ganado: A (100%) + B (100%) + C (30%) = 3900 €.")
+            st.markdown(f"**EV** = suma del valor real: A=100%, B=100%, C={float(df_editado_act[chr(39)+chr(37)+chr(32)+chr(82)+chr(101)+chr(97)+chr(108)+chr(32)+chr(67)+chr(111)+chr(109)+chr(112)+chr(108)+chr(101)+chr(116)+chr(97)+chr(100)+chr(111)+chr(39)].iloc[2]):.0f}% = {ev_total_act:,.0f} €.")
         st.metric("EV (€)", f"{ev_total_act:,.2f}")
     with col_a4:
         with st.expander("❓ ¿Cómo se calcula AC?"):
-            st.markdown("**AC** = Coste real acumulado = 7300 €.")
+            st.markdown(f"**AC** = Coste real acumulado = {float(ac_total_act):,.0f} €.")
         st.metric("AC (€)", f"{float(ac_total_act):,.2f}")
 
     st.markdown("---")
