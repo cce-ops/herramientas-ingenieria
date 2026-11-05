@@ -172,17 +172,20 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     with col_grafo:
         fig, ax = plt.subplots(figsize=(8, 5))
         grafo = res["grafo"]
-        # Layout temporal: eje X = ES (Early Start), eje Y = nivel para evitar solapamiento
-        es_dict = {n: res["tabla"].set_index("Actividad").loc[n, "ES"] for n in grafo.nodes() if n in res["tabla"]["Actividad"].values}
-        # Calcular niveles (Y) para nodos con mismo ES
+        # Layout por niveles topologicos: X = nivel, Y = separacion para evitar solapamiento
         niveles = {}
         for n in grafo.nodes():
-            es_val = es_dict.get(n, 0)
-            niveles.setdefault(es_val, []).append(n)
+            pred = list(grafo.predecessors(n))
+            nivel = 0 if not pred else max(niveles.get(p, 0) for p in pred) + 1
+            niveles[n] = nivel
+        # Agrupar por nivel para separar verticalmente
+        por_nivel = {}
+        for n, nv in niveles.items():
+            por_nivel.setdefault(nv, []).append(n)
         posiciones = {}
-        for es_val, nodos in niveles.items():
+        for nv, nodos in por_nivel.items():
             for idx, n in enumerate(nodos):
-                posiciones[n] = (es_val, -idx * 1.5)
+                posiciones[n] = (nv * 2.0, -idx * 1.5)
         colores = [
             "#e74c3c" if n in res["criticos"] else "#3498db"
             for n in grafo.nodes()
@@ -423,9 +426,7 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
         st.markdown("**Diagrama PERT (Sucesos y Actividades)**")
         fig, ax = plt.subplots(figsize=(8, 5))
         grafo = res["grafo"]
-        # Layout temporal basado en t_early (EARLY time) para que se vea como PERT
-        t_early = {n: res["tabla"].set_index("i-j") if False else None for n in grafo.nodes()}
-        # Usar t_early del resultado si está disponible
+        # Layout por niveles: X = t_early (EARLY), Y = separacion para evitar solapamiento
         t_early_map = {}
         if "tabla" in res:
             for _, row in res["tabla"].iterrows():
@@ -434,11 +435,9 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
                     u, v = parts[0], parts[1]
                     t_early_map[u] = row["ti"]
                     t_early_map[v] = row["tj"]
-        # Para nodos sin entrada en tabla, usar 0
         for n in grafo.nodes():
             if n not in t_early_map:
                 t_early_map[n] = 0.0
-        # Calcular niveles (Y) para nodos con mismo t_early
         niveles = {}
         for n in grafo.nodes():
             te = t_early_map.get(n, 0)
