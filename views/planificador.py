@@ -424,7 +424,7 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
 
     with col_der:
         st.markdown("**Diagrama PERT (Sucesos y Actividades)**")
-        fig, ax = plt.subplots(figsize=(8, 5))
+        fig, ax = plt.subplots(figsize=(10, 6))
         grafo = res["grafo"]
         # Layout por niveles: X = t_early (EARLY), Y = separacion para evitar solapamiento
         t_early_map = {}
@@ -449,13 +449,17 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
         nx.draw_networkx_nodes(
             grafo,
             posiciones,
-            node_size=1200,
-            node_color="#f1f2f6",
+            node_size=1500,
+            node_color="#3498db",
             edgecolors="black",
             ax=ax,
         )
+        etiquetas_nodo = {}
+        for n in grafo.nodes():
+            te = t_early_map.get(n, 0)
+            etiquetas_nodo[n] = f"{n}\nE={te:.0f}"
         nx.draw_networkx_labels(
-            grafo, posiciones, font_size=10, font_weight="bold", ax=ax
+            grafo, posiciones, labels=etiquetas_nodo, font_size=8, font_weight="bold", ax=ax
         )
         colores_arista = [
             "red" if grafo[u][v]["is_critical"] else "gray"
@@ -464,10 +468,14 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
         nx.draw_networkx_edges(
             grafo, posiciones, edge_color=colores_arista, arrows=True, ax=ax
         )
-        etiquetas = {(u, v): grafo[u][v]["act"] for u, v in grafo.edges()}
+        etiquetas = {}
+        for u, v in grafo.edges():
+            dur = grafo[u][v].get("te", "")
+            etiquetas[(u, v)] = f"{dur:.1f}" if isinstance(dur, float) else str(dur)
         nx.draw_networkx_edge_labels(
             grafo, posiciones, edge_labels=etiquetas, font_color="blue", ax=ax
         )
+        ax.axis("off")
         mostrar_figura(fig)
 
         st.markdown("**Diagrama de Gantt**")
