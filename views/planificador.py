@@ -431,10 +431,36 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
 
     with col_der:
         st.markdown("**Diagrama PERT (Sucesos y Actividades)**")
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, ax = plt.subplots(figsize=(10, 6))
         grafo = res["grafo"]
 
-        # Layout PERT real: X = t_early (EARLY), Y = nivel topologico para separar
+        # Layout PERT clasico: nodos ordenados por nivel topologico (izquierda a derecha)
+        # Nivel 0 = nodos sin predecesores, nivel N = nodos sin sucesores
+        niveles_topo = {}
+        for n in grafo.nodes():
+            pred = list(grafo.predecessors(n))
+            nivel = 0 if not pred else max(niveles_topo.get(p, 0) for p in pred) + 1
+            niveles_topo[n] = nivel
+        # Agrupar por nivel para separar verticalmente
+        por_nivel = {}
+        for n, nv in niveles_topo.items():
+            por_nivel.setdefault(nv, []).append(n)
+        posiciones = {}
+        for nv, nodos in por_nivel.items():
+            for idx, n in enumerate(nodos):
+                posiciones[n] = (nv * 3.0, -idx * 2.0)
+
+        # Colores de nodos: rojo si critico
+        colores_nodo = [
+            "#e74c3c" if n in res["criticos"] else "#3498db"
+            for n in grafo.nodes()
+        ]
+        nx.draw_networkx_nodes(
+            grafo, posiciones, node_size=1800, node_color=colores_nodo,
+            edgecolors="black", linewidths=2, ax=ax,
+        )
+
+        # Etiquetas de nodos: numero + E (EARLY) y L (LAST)
         t_early_map = {}
         t_last_map = {}
         if "tabla" in res:
@@ -451,48 +477,29 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
                 t_early_map[n] = 0.0
                 t_last_map[n] = 0.0
 
-        # Agrupar nodos por t_early para separar verticalmente
-        niveles = {}
-        for n in grafo.nodes():
-            te = t_early_map.get(n, 0)
-            niveles.setdefault(te, []).append(n)
-        posiciones = {}
-        for te_val, nodos in niveles.items():
-            for idx, n in enumerate(nodos):
-                posiciones[n] = (te_val, -idx * 2.5)
-
-        # Colores de nodos: rojo si critico
-        colores_nodo = [
-            "#e74c3c" if n in res["criticos"] else "#3498db"
-            for n in grafo.nodes()
-        ]
-        nx.draw_networkx_nodes(
-            grafo, posiciones, node_size=1800, node_color=colores_nodo,
-            edgecolors="black", linewidths=2, ax=ax,
-        )
-
-        # Etiquetas de nodos: numero + E (EARLY) y L (LAST)
         etiquetas_nodo = {}
         for n in grafo.nodes():
             te = t_early_map.get(n, 0)
             tl = t_last_map.get(n, 0)
-            etiquetas_nodo[n] = f"{n}\nE={te:.0f} L={tl:.0f}"
+            etiquetas_nodo[n] = f"{n}\nE={te:.0f}\nL={tl:.0f}"
         nx.draw_networkx_labels(
             grafo, posiciones, labels=etiquetas_nodo, font_size=7, font_weight="bold", ax=ax,
         )
 
-        # Colores de aristas: rojo si critica, gris si no
+        # Colores y grosor de aristas
         colores_arista = [
             "red" if (u in res["criticos"] and v in res["criticos"]) else "gray"
             for u, v in grafo.edges()
         ]
-        # Grosor: mas grueso si critica
         anchos = [3 if (u in res["criticos"] and v in res["criticos"]) else 1.5 for u, v in grafo.edges()]
-        nx.draw_networkx_edges(
-            grafo, posiciones, edge_color=colores_arista, width=anchos,
-            arrows=True, arrowstyle="->", arrowsize=15, ax=ax,
-            connectionstyle="arc3,rad=0.05",
-        )
+        # Ficticias (dur=0) como discontinuas
+        estilos = ["dashed" if grafo[u][v].get("te", 1) == 0 else "solid" for u, v in grafo.edges()]
+        for i, (u, v) in enumerate(grafo.edges()):
+            nx.draw_networkx_edges(
+                grafo, posiciones, edgelist=[(u, v)], edge_color=colores_arista[i],
+                width=anchos[i], arrows=True, arrowstyle="->", arrowsize=15, ax=ax,
+                style=estilos[i], connectionstyle="arc3,rad=0.05",
+            )
 
         # Etiquetas de aristas: nombre actividad + duracion
         etiquetas = {}
