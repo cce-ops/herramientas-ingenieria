@@ -185,15 +185,11 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             grafo, posiciones, font_size=10, font_weight="bold", ax=ax,
         )
         colores_arista = [
-            "red" if grafo[u][v].get("is_critical", False) else "gray"
+            "red" if (u in res["criticos"] and v in res["criticos"]) else "gray"
             for u, v in grafo.edges()
         ]
-        # Marcar aristas criticas
-        for u, v in grafo.edges():
-            if u in res["criticos"] and v in res["criticos"]:
-                colores_arista[grafo.edges().index((u, v))] = "red"
         nx.draw_networkx_edges(
-            grafo, posiciones, edge_color="gray", arrows=True, ax=ax,
+            grafo, posiciones, edge_color=colores_arista, arrows=True, ax=ax,
         )
         etiquetas = {}
         for u, v in grafo.edges():
