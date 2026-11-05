@@ -83,6 +83,9 @@ def _calcular_basico(df: pd.DataFrame, fecha_inicio, usar_pert: bool = False):
         holgura = lf[nodo] - es[nodo] - grafo.nodes[nodo]["dur"]
         if usar_pert and holgura < 1e-5:
             var_proy += grafo.nodes[nodo]["var"]
+        for u, v in grafo.edges():
+            if u == nodo or v == nodo:
+                grafo[u][v]["is_critical"] = abs(holgura) < 1e-5
         filas.append(
             {
                 "Actividad": nodo,
@@ -97,6 +100,8 @@ def _calcular_basico(df: pd.DataFrame, fecha_inicio, usar_pert: bool = False):
         )
 
     criticos = [n for n in orden if ls[n] - es[n] < 1e-5]
+    for u, v in grafo.edges():
+        grafo[u][v]["is_critical"] = (u in criticos and v in criticos)
     inicio = pd.to_datetime(fecha_inicio)
 
     gantt = pd.DataFrame(
@@ -166,22 +171,40 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
 
     with col_grafo:
         fig, ax = plt.subplots(figsize=(6, 4))
-        posiciones = nx.spring_layout(res["grafo"], seed=42)
+        grafo = res["grafo"]
+        posiciones = nx.spring_layout(grafo, seed=42)
         colores = [
             "#e74c3c" if n in res["criticos"] else "#3498db"
-            for n in res["grafo"].nodes()
+            for n in grafo.nodes()
         ]
-        nx.draw(
-            res["grafo"],
-            posiciones,
-            with_labels=True,
-            node_size=2000,
-            node_color=colores,
-            font_weight="bold",
-            edge_color="gray",
-            arrows=True,
-            ax=ax,
+        nx.draw_networkx_nodes(
+            grafo, posiciones, node_size=2000, node_color=colores,
+            edgecolors="black", ax=ax,
         )
+        nx.draw_networkx_labels(
+            grafo, posiciones, font_size=10, font_weight="bold", ax=ax,
+        )
+        colores_arista = [
+            "red" if grafo[u][v].get("is_critical", False) else "gray"
+            for u, v in grafo.edges()
+        ]
+        # Marcar aristas criticas
+        for u, v in grafo.edges():
+            if u in res["criticos"] and v in res["criticos"]:
+                colores_arista[grafo.edges().index((u, v))] = "red"
+        nx.draw_networkx_edges(
+            grafo, posiciones, edge_color="gray", arrows=True, ax=ax,
+        )
+        etiquetas = {}
+        for u, v in grafo.edges():
+            dur = grafo[u][v].get("dur", "")
+            if dur == "":
+                dur = grafo.nodes[u].get("dur", "")
+            etiquetas[(u, v)] = f"{dur}"
+        nx.draw_networkx_edge_labels(
+            grafo, posiciones, edge_labels=etiquetas, font_color="blue", ax=ax,
+        )
+        ax.axis("off")
         mostrar_figura(fig)
 
 
