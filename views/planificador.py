@@ -424,10 +424,12 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
 
     with col_der:
         st.markdown("**Diagrama PERT (Sucesos y Actividades)**")
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(12, 6))
         grafo = res["grafo"]
-        # Layout por niveles: X = t_early (EARLY), Y = separacion para evitar solapamiento
+
+        # Layout PERT real: X = t_early (EARLY), Y = nivel topologico para separar
         t_early_map = {}
+        t_last_map = {}
         if "tabla" in res:
             for _, row in res["tabla"].iterrows():
                 parts = str(row["i-j"]).split("-")
@@ -435,9 +437,14 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
                     u, v = parts[0], parts[1]
                     t_early_map[u] = row["ti"]
                     t_early_map[v] = row["tj"]
+                    t_last_map[u] = row["ti*"]
+                    t_last_map[v] = row["tj*"]
         for n in grafo.nodes():
             if n not in t_early_map:
                 t_early_map[n] = 0.0
+                t_last_map[n] = 0.0
+
+        # Agrupar nodos por t_early para separar verticalmente
         niveles = {}
         for n in grafo.nodes():
             te = t_early_map.get(n, 0)
@@ -445,35 +452,52 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
         posiciones = {}
         for te_val, nodos in niveles.items():
             for idx, n in enumerate(nodos):
-                posiciones[n] = (te_val, -idx * 1.5)
+                posiciones[n] = (te_val, -idx * 2.5)
+
+        # Colores de nodos: rojo si critico
+        colores_nodo = [
+            "#e74c3c" if n in res["criticos"] else "#3498db"
+            for n in grafo.nodes()
+        ]
         nx.draw_networkx_nodes(
-            grafo,
-            posiciones,
-            node_size=1500,
-            node_color="#3498db",
-            edgecolors="black",
-            ax=ax,
+            grafo, posiciones, node_size=1800, node_color=colores_nodo,
+            edgecolors="black", linewidths=2, ax=ax,
         )
+
+        # Etiquetas de nodos: numero + E (EARLY) y L (LAST)
         etiquetas_nodo = {}
         for n in grafo.nodes():
             te = t_early_map.get(n, 0)
-            etiquetas_nodo[n] = f"{n}\nE={te:.0f}"
+            tl = t_last_map.get(n, 0)
+            etiquetas_nodo[n] = f"{n}\nE={te:.0f} L={tl:.0f}"
         nx.draw_networkx_labels(
-            grafo, posiciones, labels=etiquetas_nodo, font_size=8, font_weight="bold", ax=ax
+            grafo, posiciones, labels=etiquetas_nodo, font_size=7, font_weight="bold", ax=ax,
         )
+
+        # Colores de aristas: rojo si critica, gris si no
         colores_arista = [
-            "red" if grafo[u][v]["is_critical"] else "gray"
+            "red" if (u in res["criticos"] and v in res["criticos"]) else "gray"
             for u, v in grafo.edges()
         ]
+        # Grosor: mas grueso si critica
+        anchos = [3 if (u in res["criticos"] and v in res["criticos"]) else 1.5 for u, v in grafo.edges()]
         nx.draw_networkx_edges(
-            grafo, posiciones, edge_color=colores_arista, arrows=True, ax=ax
+            grafo, posiciones, edge_color=colores_arista, width=anchos,
+            arrows=True, arrowstyle="->", arrowsize=15, ax=ax,
+            connectionstyle="arc3,rad=0.05",
         )
+
+        # Etiquetas de aristas: nombre actividad + duracion
         etiquetas = {}
         for u, v in grafo.edges():
+            act = grafo[u][v].get("act", "")
             dur = grafo[u][v].get("te", "")
-            etiquetas[(u, v)] = f"{dur:.1f}" if isinstance(dur, float) else str(dur)
+            if dur == "":
+                dur = grafo.nodes[u].get("dur", "")
+            etiquetas[(u, v)] = f"{act}\n{dur:.1f}" if isinstance(dur, float) else f"{act}\n{dur}"
         nx.draw_networkx_edge_labels(
-            grafo, posiciones, edge_labels=etiquetas, font_color="blue", ax=ax
+            grafo, posiciones, edge_labels=etiquetas, font_color="blue", ax=ax,
+            font_size=8,
         )
         ax.axis("off")
         mostrar_figura(fig)
