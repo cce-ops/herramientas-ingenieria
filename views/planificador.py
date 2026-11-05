@@ -374,6 +374,12 @@ def _calcular_avanzado(df: pd.DataFrame, fecha_inicio):
         ]
     )
 
+    # Nodos criticos: nodos que aparecen en alguna arista critica
+    criticos = set()
+    for u, v, datos in grafo.edges(data=True):
+        if datos.get("is_critical", False):
+            criticos.add(u)
+            criticos.add(v)
     return {
         "grafo": grafo,
         "nodos": nodos,
@@ -382,6 +388,7 @@ def _calcular_avanzado(df: pd.DataFrame, fecha_inicio):
         "tabla": pd.DataFrame(filas),
         "matriz": matriz,
         "gantt": gantt,
+        "criticos": list(criticos),
     }
 
 
