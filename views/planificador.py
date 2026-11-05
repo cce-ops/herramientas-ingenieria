@@ -41,23 +41,27 @@ _DIAS_LABORABLES = CustomBusinessDay(weekmask="Mon Tue Wed Thu Fri")
 # ---------------------------------------------------------------------------
 # Modo Basico (Activity on Node)
 # ---------------------------------------------------------------------------
-def _calcular_basico(df: pd.DataFrame, fecha_inicio):
+def _calcular_basico(df: pd.DataFrame, fecha_inicio, usar_pert: bool = False):
     """Construye el grafo AON y calcula ES/EF/LS/LF, holgura y camino critico.
-
-    Returns
-    -------
-    dict con los datos ya calculados, listos para pintar.
+    Si usar_pert=True, calcula t_e y varianza a partir de t_opt/t_prob/t_pes.
     """
     grafo = nx.DiGraph()
     for _, row in df.iterrows():
         tarea = str(row["Tarea"]).strip()
-        grafo.add_node(tarea, dur=int(row["Duración"]))
+        if usar_pert:
+            t_opt = float(row["t_opt"])
+            t_prob = float(row["t_prob"])
+            t_pes = float(row["t_pes"])
+            te = (t_opt + 4 * t_prob + t_pes) / 6
+            var = ((t_pes - t_opt) / 6) ** 2
+            grafo.add_node(tarea, dur=te, var=var, t_opt=t_opt, t_prob=t_prob, t_pes=t_pes)
+        else:
+            grafo.add_node(tarea, dur=int(row["Duración"]), var=0.0)
         for padre in str(row["Predecesores"]).split(","):
             padre = padre.strip()
             if padre:
                 grafo.add_edge(padre, tarea)
 
-    # Si hay un ciclo, topological_sort lanza NetworkXUnfeasible.
     orden = list(nx.topological_sort(grafo))
 
     es, ef = {}, {}
@@ -74,30 +78,33 @@ def _calcular_basico(df: pd.DataFrame, fecha_inicio):
         ls[nodo] = lf[nodo] - grafo.nodes[nodo]["dur"]
 
     filas = []
+    var_proy = 0.0
     for nodo in orden:
         holgura = lf[nodo] - es[nodo] - grafo.nodes[nodo]["dur"]
+        if usar_pert and holgura < 1e-5:
+            var_proy += grafo.nodes[nodo]["var"]
         filas.append(
             {
                 "Actividad": nodo,
-                "d_ij": grafo.nodes[nodo]["dur"],
-                "ES": es[nodo],
-                "EF": ef[nodo],
-                "LS": ls[nodo],
-                "LF": lf[nodo],
-                "Holgura": holgura,
-                "CC": "Sí" if holgura == 0 else "",
+                "d_ij": round(grafo.nodes[nodo]["dur"], 2) if usar_pert else grafo.nodes[nodo]["dur"],
+                "ES": round(es[nodo], 2) if usar_pert else es[nodo],
+                "EF": round(ef[nodo], 2) if usar_pert else ef[nodo],
+                "LS": round(ls[nodo], 2) if usar_pert else ls[nodo],
+                "LF": round(lf[nodo], 2) if usar_pert else lf[nodo],
+                "Holgura": round(holgura, 2) if usar_pert else holgura,
+                "CC": "Sí" if holgura < 1e-5 else "",
             }
         )
 
-    criticos = [n for n in orden if ls[n] - es[n] == 0]
+    criticos = [n for n in orden if ls[n] - es[n] < 1e-5]
     inicio = pd.to_datetime(fecha_inicio)
 
     gantt = pd.DataFrame(
         [
             {
                 "Tarea": nodo,
-                "Inicio": inicio + _DIAS_LABORABLES * int(es[nodo]),
-                "Fin": inicio + _DIAS_LABORABLES * int(ef[nodo]),
+                "Inicio": inicio + _DIAS_LABORABLES * int(es[nodo]) if not usar_pert else inicio + _DIAS_LABORABLES * es[nodo],
+                "Fin": inicio + _DIAS_LABORABLES * int(ef[nodo]) if not usar_pert else inicio + _DIAS_LABORABLES * ef[nodo],
                 "Crítica": "Sí" if nodo in criticos else "No",
             }
             for nodo in orden
@@ -108,9 +115,11 @@ def _calcular_basico(df: pd.DataFrame, fecha_inicio):
         "grafo": grafo,
         "orden": orden,
         "criticos": criticos,
-        "duracion_total": duracion_total,
+        "duracion_total": round(duracion_total, 2) if usar_pert else duracion_total,
+        "varianza": round(var_proy, 2) if usar_pert else 0.0,
         "tabla": pd.DataFrame(filas),
         "gantt": gantt,
+        "usar_pert": usar_pert,
     }
 
 
@@ -122,6 +131,23 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         f"**Duración total:** {res['duracion_total']} días laborables | "
         f"**Fecha de finalización:** {fecha_fin.strftime('%d/%m/%Y')}"
     )
+    if res.get("usar_pert") and res.get("varianza", 0) > 0:
+        desviacion = np.sqrt(res["varianza"])
+        st.write(
+            "Varianza (σ²): "
+            f"{res['varianza']:.2f} | "
+            f"Desviación (σ): {desviacion:.2f}"
+        )
+        plazo_objetivo = st.number_input(
+            "Plazo objetivo (días laborables):",
+            value=float(res["duracion_total"]) + 1,
+            key="plan__plazo_objetivo_basico",
+        )
+        probabilidad = (
+            stats.norm.cdf((plazo_objetivo - res["duracion_total"]) / desviacion) * 100
+            if desviacion > 0 else 0.0
+        )
+        st.info(f"Probabilidad de éxito: **{probabilidad:.2f}%**")
     st.dataframe(res["tabla"], width="stretch")
 
     col_gantt, col_grafo = st.columns(2)
@@ -162,15 +188,49 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
 def _modo_basico() -> None:
     st.markdown("### 1. Datos de Entrada (Modo Básico)")
 
-    datos_basicos = {
-        "Tarea": ["A", "B", "C", "D", "E", "F"],
-        "Duración": [2, 3, 3, 4, 3, 5],
-        "Predecesores": ["", "A", "A", "B", "C", "D,E"],
-    }
-    df_basico = pd.DataFrame(datos_basicos)
-    df_editado = st.data_editor(
-        df_basico, num_rows="dynamic", width="stretch", key="plan__tabla_basica"
+    modo_pert = st.selectbox(
+        "Tipo de duración:",
+        ["Duración fija (días)", "PERT (t_opt / t_prob / t_pes)"],
+        index=0,
+        key="plan__modo_pert_basico",
+        help="PERT usa tiempos optimista (to), más probable (tm) y pesimista (tp) para calcular t_e = (to + 4tm + tp)/6.",
     )
+    usar_pert = modo_pert.startswith("PERT")
+
+    if usar_pert:
+        datos_basicos = {
+            "Tarea": ["A", "B", "C", "D"],
+            "t_opt": [1, 1, 2, 2],
+            "t_prob": [1, 2, 3, 6],
+            "t_pes": [1, 3, 4, 10],
+            "Predecesores": ["", "", "A", "A"],
+        }
+    else:
+        datos_basicos = {
+            "Tarea": ["A", "B", "C", "D", "E", "F"],
+            "Duración": [2, 3, 3, 4, 3, 5],
+            "Predecesores": ["", "A", "A", "B", "C", "D,E"],
+        }
+    df_basico = pd.DataFrame(datos_basicos)
+
+    if usar_pert:
+        df_editado = st.data_editor(
+            df_basico,
+            num_rows="dynamic",
+            width="stretch",
+            key="plan__tabla_basica_pert",
+            column_config={
+                "Tarea": st.column_config.TextColumn("Tarea"),
+                "t_opt": st.column_config.NumberColumn("t_opt (optimista)", min_value=0.0, step=0.5),
+                "t_prob": st.column_config.NumberColumn("t_prob (probable)", min_value=0.0, step=0.5),
+                "t_pes": st.column_config.NumberColumn("t_pes (pesimista)", min_value=0.0, step=0.5),
+                "Predecesores": st.column_config.TextColumn("Predecesores"),
+            },
+        )
+    else:
+        df_editado = st.data_editor(
+            df_basico, num_rows="dynamic", width="stretch", key="plan__tabla_basica"
+        )
 
     fecha_inicio = st.date_input(
         "Selecciona la fecha de inicio del proyecto:",
@@ -183,7 +243,7 @@ def _modo_basico() -> None:
     ):
         try:
             guardar_resultado(
-                R_BASICO, _calcular_basico(df_editado, fecha_inicio)
+                R_BASICO, _calcular_basico(df_editado, fecha_inicio, usar_pert)
             )
         except nx.NetworkXUnfeasible:
             st.error("Error: Bucle detectado en las precedencias.")
