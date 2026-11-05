@@ -170,9 +170,19 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         st.plotly_chart(fig_gantt, width="stretch")
 
     with col_grafo:
-        fig, ax = plt.subplots(figsize=(6, 4))
+        fig, ax = plt.subplots(figsize=(8, 5))
         grafo = res["grafo"]
-        posiciones = nx.spring_layout(grafo, seed=42)
+        # Layout temporal: eje X = ES (Early Start), eje Y = nivel para evitar solapamiento
+        es_dict = {n: res["tabla"].set_index("Actividad").loc[n, "ES"] for n in grafo.nodes() if n in res["tabla"]["Actividad"].values}
+        # Calcular niveles (Y) para nodos con mismo ES
+        niveles = {}
+        for n in grafo.nodes():
+            es_val = es_dict.get(n, 0)
+            niveles.setdefault(es_val, []).append(n)
+        posiciones = {}
+        for es_val, nodos in niveles.items():
+            for idx, n in enumerate(nodos):
+                posiciones[n] = (es_val, -idx * 1.5)
         colores = [
             "#e74c3c" if n in res["criticos"] else "#3498db"
             for n in grafo.nodes()
@@ -413,8 +423,30 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
         st.markdown("**Diagrama PERT (Sucesos y Actividades)**")
         fig, ax = plt.subplots(figsize=(8, 5))
         grafo = res["grafo"]
-        posiciones = nx.spring_layout(grafo, seed=42)
-
+        # Layout temporal basado en t_early (EARLY time) para que se vea como PERT
+        t_early = {n: res["tabla"].set_index("i-j") if False else None for n in grafo.nodes()}
+        # Usar t_early del resultado si está disponible
+        t_early_map = {}
+        if "tabla" in res:
+            for _, row in res["tabla"].iterrows():
+                parts = str(row["i-j"]).split("-")
+                if len(parts) == 2:
+                    u, v = parts[0], parts[1]
+                    t_early_map[u] = row["ti"]
+                    t_early_map[v] = row["tj"]
+        # Para nodos sin entrada en tabla, usar 0
+        for n in grafo.nodes():
+            if n not in t_early_map:
+                t_early_map[n] = 0.0
+        # Calcular niveles (Y) para nodos con mismo t_early
+        niveles = {}
+        for n in grafo.nodes():
+            te = t_early_map.get(n, 0)
+            niveles.setdefault(te, []).append(n)
+        posiciones = {}
+        for te_val, nodos in niveles.items():
+            for idx, n in enumerate(nodos):
+                posiciones[n] = (te_val, -idx * 1.5)
         nx.draw_networkx_nodes(
             grafo,
             posiciones,
