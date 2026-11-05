@@ -185,7 +185,8 @@ def _aon_to_aoa(grafo_aon, duraciones):
                     grafo_aoa.add_edge(fi, fj, act=f"_fict_{act}_{p}", te=0, dur=0, ficticia=True)
 
     # Añadir nodo final unificado si hay multiples finales
-    finales = [n for n in grafo_aon.nodes() if not list(grafo_aon.successors(n))]
+    # Calcular finales ANTES de añadir ficticias (los ficticios son nodos auxiliares)
+    finales = [n for n in grafo_aon.nodes() if not list(grafo_aon.successors(n)) and not str(n).startswith("_fict_")]
     if len(finales) > 1:
         nodo_final = siguiente_suceso
         nodos_aoa.add(nodo_final)
