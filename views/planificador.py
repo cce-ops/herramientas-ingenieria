@@ -103,8 +103,8 @@ def _calcular_basico(df: pd.DataFrame, fecha_inicio, usar_pert: bool = False):
         [
             {
                 "Tarea": nodo,
-                "Inicio": inicio + _DIAS_LABORABLES * int(es[nodo]) if not usar_pert else inicio + _DIAS_LABORABLES * es[nodo],
-                "Fin": inicio + _DIAS_LABORABLES * int(ef[nodo]) if not usar_pert else inicio + _DIAS_LABORABLES * ef[nodo],
+                "Inicio": inicio + _DIAS_LABORABLES * int(es[nodo]) if not usar_pert else inicio + _DIAS_LABORABLES * int(round(es[nodo])),
+                "Fin": inicio + _DIAS_LABORABLES * int(ef[nodo]) if not usar_pert else inicio + _DIAS_LABORABLES * int(round(ef[nodo])),
                 "Crítica": "Sí" if nodo in criticos else "No",
             }
             for nodo in orden
