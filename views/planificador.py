@@ -132,41 +132,66 @@ def _calcular_basico(df: pd.DataFrame, fecha_inicio, usar_pert: bool = False):
 
 def _aon_to_aoa(grafo_aon, duraciones):
     """Convierte un grafo AON (actividades como nodos) a AOA (PERT: actividades como aristas).
-    Devuelve (grafo_aoa, dict_eventos) donde grafo_aoa es un DiGraph con nodos=sucesos y aristas=actividades.
+    Devuelve (grafo_aoa, mapping) donde grafo_aoa es un DiGraph con nodos=sucesos y aristas=actividades.
+    Los numeros de sucesos reflejan el orden temporal (EARLY time).
     """
     # Topological sort
     orden = list(nx.topological_sort(grafo_aon))
-    # Asignar suceso de inicio y fin a cada actividad
-    # suceso_inicio[actividad] = nodo de origen, suceso_fin[actividad] = nodo de destino
-    suceso_fin = {}
-    suceso_inicio = {}
-    siguiente_suceso = 1
-    # Mapa de actividad -> sucesos
+
+    # Calcular EARLY times para cada actividad (usando duracion)
+    early = {}
     for act in orden:
+        preds = list(grafo_aon.predecessors(act))
+        if not preds:
+            early[act] = 0.0
+        else:
+            early[act] = max(early[p] + duraciones.get(p, 0) for p in preds)
+
+    # Ordenar actividades por EARLY time para asignar numeros de sucesos
+    # (mayor EARLY primero para que el dominante obtenga numero mayor)
+    orden_por_early = sorted(orden, key=lambda a: (early[a], -duraciones.get(a, 0)))
+
+    suceso_inicio = {}
+    suceso_fin = {}
+    siguiente_suceso = 1
+
+    # Primera pasada: asignar sucesos de inicio Y fin (en orden de EARLY, menor duración primero)
+    for act in sorted(orden, key=lambda a: (early[a], duraciones.get(a, 0))):
         preds = list(grafo_aon.predecessors(act))
         if not preds:
             suceso_inicio[act] = siguiente_suceso
             siguiente_suceso += 1
+            suceso_fin[act] = siguiente_suceso
+            siguiente_suceso += 1
+        elif len(preds) == 1:
+            suceso_inicio[act] = suceso_fin[preds[0]]
+            suceso_fin[act] = siguiente_suceso
+            siguiente_suceso += 1
         else:
-            # Si un solo predecesor, usar su suceso de fin
-            if len(preds) == 1:
-                suceso_inicio[act] = suceso_fin[preds[0]]
-            else:
-                # Multiples predecesores: crear suceso intermedio
-                suceso_inicio[act] = siguiente_suceso
-                siguiente_suceso += 1
-                # El dominante (mayor duracion) se conecta directamente; los demas necesitan ficticia.
-                dominante = max(preds, key=lambda p: duraciones.get(p, 0))
-                for p in preds:
-                    if p != dominante:
-                        grafo_aon.add_edge(p, f"Fict_{act}", weight=0)
-        # Suceso de fin: crear nuevo suceso
-        suceso_fin[act] = siguiente_suceso
-        siguiente_suceso += 1
-        # Si tiene multiples sucesores, el suceso de fin se comparte? No, cada actividad tiene su propio suceso de fin.
-        # Pero si una actividad es predecesor de otra, el suceso de fin se reutiliza.
-        # Para simplificar, reutilizamos suceso_fin si ya existe para este nodo.
-        # (Ya lo hacemos arriba para un solo predecesor.)
+            # Multiples predecesores: el dominante (mayor duracion) se conecta directamente.
+            dominante = max(preds, key=lambda p: duraciones.get(p, 0))
+            suceso_inicio[act] = suceso_fin[dominante]
+            # Crear ficticias para los no-dominantes
+            for p in preds:
+                if p != dominante:
+                    # Crear suceso intermedio
+                    suceso_intermedio = siguiente_suceso
+                    siguiente_suceso += 1
+                    # La ficticia ira de suceso_fin[p] a suceso_intermedio, y de suceso_intermedio a suceso_inicio[act]
+                    # Pero para simplificar, añadimos una sola ficticia de suceso_fin[p] a suceso_inicio[act]
+                    pass  # se añadira en la construccion del grafo AOA
+
+    # Segunda pasada: reasignar sucesos de fin para que reflejen la duracion.
+    # Procesar en orden de (EARLY, -duración) para que el dominante obtenga numero mayor.
+    for act in sorted(orden, key=lambda a: (early[a], -duraciones.get(a, 0))):
+        if act not in suceso_fin:
+            suceso_fin[act] = siguiente_suceso
+            siguiente_suceso += 1
+        else:
+            # Si ya tiene suceso_fin, verificar que sea mayor que el suceso de inicio
+            if suceso_fin[act] <= suceso_inicio[act]:
+                suceso_fin[act] = suceso_inicio[act] + 1
+                siguiente_suceso = max(siguiente_suceso, suceso_fin[act] + 1)
 
     # Construir grafo AOA
     grafo_aoa = nx.DiGraph()
@@ -177,7 +202,6 @@ def _aon_to_aoa(grafo_aon, duraciones):
         nodos_aoa.add(i)
         nodos_aoa.add(j)
         grafo_aoa.add_edge(i, j, act=act, te=duraciones[act], dur=duraciones[act])
-        # Ficticias
         preds = list(grafo_aon.predecessors(act))
         if len(preds) > 1:
             dominante = max(preds, key=lambda p: duraciones.get(p, 0))
@@ -188,14 +212,13 @@ def _aon_to_aoa(grafo_aon, duraciones):
                     if fi != fj:
                         grafo_aoa.add_edge(fi, fj, act=f"Fict_{p}", te=0, dur=0, ficticia=True)
 
-    # NO se añade nodo final unificado: cada actividad final termina en su propio suceso.
-    # Esto evita ficticias confusas al final del diagrama.
-
     # Renumerar nodos para que sean consecutivos (1, 2, 3, ...)
     mapping = {n: i+1 for i, n in enumerate(sorted(nodos_aoa))}
     grafo_aoa = nx.relabel_nodes(grafo_aoa, mapping)
 
     return grafo_aoa, mapping
+
+
 
 
 def _pintar_basico(res: dict, fecha_inicio) -> None:
