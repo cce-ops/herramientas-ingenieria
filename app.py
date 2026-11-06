@@ -32,7 +32,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("🛠️ Herramientas de Ingeniería para Proyectos")
+st.title("🛠️ Herramientas de Ingeniería para Proyectos v2")
 st.caption(
     "Planificación, viabilidad económica y diseño de producto en un único enlace."
 )
