@@ -157,7 +157,7 @@ def _aon_to_aoa(grafo_aon, duraciones):
                 siguiente_suceso += 1
                 # Añadir ficticias desde cada predecesor
                 for p in preds:
-                    grafo_aon.add_edge(p, f"F_{act}", weight=0)
+                    grafo_aon.add_edge(p, f"Fict_{act}", weight=0)
         # Suceso de fin: crear nuevo suceso
         suceso_fin[act] = siguiente_suceso
         siguiente_suceso += 1
@@ -182,7 +182,7 @@ def _aon_to_aoa(grafo_aon, duraciones):
                 fi = suceso_fin[p]
                 fj = suceso_inicio[act]
                 if fi != fj:
-                    grafo_aoa.add_edge(fi, fj, act=f"F_{act}", te=0, dur=0, ficticia=True)
+                    grafo_aoa.add_edge(fi, fj, act=f"Fict_{act}", te=0, dur=0, ficticia=True)
 
     # NO se añade nodo final unificado: cada actividad final termina en su propio suceso.
     # Esto evita ficticias confusas al final del diagrama.
