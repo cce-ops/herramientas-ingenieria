@@ -369,10 +369,28 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         hide_index=True,
     )
 
-    # --- Matriz de Zaderenko ---
-    st.markdown("**Matriz de Zaderenko**")
-    if "matriz_z" in res:
-        st.dataframe(res["matriz_z"], width="stretch")
+    # --- Matriz de Zaderenko (del grafo AOA, solo duracion fija) ---
+    if not res.get("usar_pert", False):
+        grafo_aon = res["grafo"]
+        duraciones = {n: grafo_aon.nodes[n].get("dur", 1) for n in grafo_aon.nodes()}
+        grafo_aoa_z, mapping_z = _aon_to_aoa(grafo_aon.copy(), duraciones)
+        nodos_z = list(nx.topological_sort(grafo_aoa_z))
+        t_early_z = {n: 0 for n in nodos_z}
+        for n in nodos_z:
+            for p in grafo_aoa_z.predecessors(n):
+                t_early_z[n] = max(t_early_z[n], t_early_z[p] + grafo_aoa_z[p][n].get("te", 0))
+        t_last_z = {n: t_early_z[nodos_z[-1]] for n in nodos_z}
+        for n in reversed(nodos_z):
+            for s in grafo_aoa_z.successors(n):
+                t_last_z[n] = min(t_last_z[n], t_last_z[s] - grafo_aoa_z[n][s].get("te", 0))
+        etiquetas_z = [str(n) for n in nodos_z]
+        matriz_z = pd.DataFrame("", index=etiquetas_z, columns=etiquetas_z, dtype=object)
+        for u, v, datos in grafo_aoa_z.edges(data=True):
+            matriz_z.loc[str(u), str(v)] = f"{datos['te']:.2f}"
+        matriz_z.loc["t_i*"] = [f"{t_last_z[n]:.2f}" for n in nodos_z]
+        matriz_z["t_j"] = [f"{t_early_z[n]:.2f}" for n in nodos_z] + [""]
+        st.markdown("**Matriz de Zaderenko**")
+        st.dataframe(matriz_z, width="stretch")
 
     # --- Diagrama PERT AOA (solo duracion fija) ---
     if not res.get("usar_pert", False):
