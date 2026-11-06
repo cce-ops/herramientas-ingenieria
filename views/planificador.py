@@ -155,9 +155,11 @@ def _aon_to_aoa(grafo_aon, duraciones):
                 # Multiples predecesores: crear suceso intermedio
                 suceso_inicio[act] = siguiente_suceso
                 siguiente_suceso += 1
-                # Añadir ficticias desde cada predecesor
+                # El dominante (mayor duracion) se conecta directamente; los demas necesitan ficticia.
+                dominante = max(preds, key=lambda p: duraciones.get(p, 0))
                 for p in preds:
-                    grafo_aon.add_edge(p, f"Fict_{act}", weight=0)
+                    if p != dominante:
+                        grafo_aon.add_edge(p, f"Fict_{act}", weight=0)
         # Suceso de fin: crear nuevo suceso
         suceso_fin[act] = siguiente_suceso
         siguiente_suceso += 1
@@ -178,11 +180,13 @@ def _aon_to_aoa(grafo_aon, duraciones):
         # Ficticias
         preds = list(grafo_aon.predecessors(act))
         if len(preds) > 1:
+            dominante = max(preds, key=lambda p: duraciones.get(p, 0))
             for p in preds:
-                fi = suceso_fin[p]
-                fj = suceso_inicio[act]
-                if fi != fj:
-                    grafo_aoa.add_edge(fi, fj, act=f"Fict_{act}", te=0, dur=0, ficticia=True)
+                if p != dominante:
+                    fi = suceso_fin[p]
+                    fj = suceso_inicio[act]
+                    if fi != fj:
+                        grafo_aoa.add_edge(fi, fj, act=f"Fict_{p}", te=0, dur=0, ficticia=True)
 
     # NO se añade nodo final unificado: cada actividad final termina en su propio suceso.
     # Esto evita ficticias confusas al final del diagrama.
