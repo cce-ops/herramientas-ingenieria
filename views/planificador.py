@@ -19,6 +19,7 @@ un escape legitimo.
 
 from __future__ import annotations
 
+import html as _html
 from datetime import date
 
 import matplotlib.pyplot as plt
@@ -61,6 +62,50 @@ def _fmt_num(valor) -> str:
 # ---------------------------------------------------------------------------
 # Modo Basico (Activity on Node)
 # ---------------------------------------------------------------------------
+
+
+def _tabla_apuntes(columnas, filas, ayudas=None, clases_celda=None) -> None:
+    """Tabla HTML compacta con iconos ? de ayuda, como en los apuntes."""
+    ayudas = ayudas or {}
+    cabecera = []
+    for col in columnas:
+        ayuda = ayudas.get(col, "")
+        icono = (
+            f'<span class="ayuda" title="{_html.escape(ayuda)}">?</span>'
+            if ayuda
+            else ""
+        )
+        etiqueta = _html.escape(str(col)).replace("\n", "<br>")
+        cabecera.append(f"<th>{etiqueta}{icono}</th>")
+
+    cuerpo = []
+    for fila in filas:
+        celdas = []
+        for col in columnas:
+            valor = fila.get(col, "")
+            clases = clases_celda(valor, col) if clases_celda else []
+            clase = f' class="{" ".join(clases)}"' if clases else ""
+            texto = _html.escape(str(valor)).replace("\n", "<br>")
+            celdas.append(f"<td{clase}>{texto}</td>")
+        cuerpo.append("<tr>" + "".join(celdas) + "</tr>")
+
+    st.markdown(
+        f"""
+<style>
+.tabla-apuntes {{ width:100%; border-collapse:collapse; font-size:0.78rem; margin:0.25rem 0 0.5rem 0; }}
+.tabla-apuntes th, .tabla-apuntes td {{ border:1px solid rgba(128,128,128,.35); padding:4px 5px; text-align:center; }}
+.tabla-apuntes th {{ font-weight:600; white-space:nowrap; background:rgba(128,128,128,.10); }}
+.tabla-apuntes td.critico {{ color:#e74c3c; font-weight:700; }}
+.tabla-apuntes .ayuda {{ display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; margin-left:2px; border:1px solid currentColor; border-radius:50%; font-size:9px; line-height:1; opacity:.65; cursor:help; vertical-align:middle; }}
+</style>
+<table class="tabla-apuntes">
+<thead><tr>{''.join(cabecera)}</tr></thead>
+<tbody>{''.join(cuerpo)}</tbody>
+</table>
+""",
+        unsafe_allow_html=True,
+    )
+
 def _calcular_basico(df: pd.DataFrame, fecha_inicio, usar_pert: bool = False):
     """Construye el grafo AON y calcula los tiempos PERT/AOA.
 
@@ -402,60 +447,50 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     # --- 3. Cálculo de la holgura y camino crítico ---
     st.markdown("**3. Cálculo de la Holgura y Determinación del Camino Crítico**")
     tabla = res["tabla"]
-    st.dataframe(
-        tabla.style.format(
-            {
-                "dij": "{:g}",
-                "ti": "{:g}",
-                "tj": "{:g}",
-                "t*i": "{:g}",
-                "t*j": "{:g}",
-                "Hi": "{:g}",
-                "Hj": "{:g}",
-                "HTij": "{:g}",
-            }
+    columnas_holgura = [
+        "Actividad", "Nombre", "dij", "ti", "tj", "t*i", "t*j",
+        "Hi", "Hj", "HTij", "CC",
+    ]
+    ayudas_holgura = {
+        "Actividad": "Suceso de origen i y suceso de destino j (i-j).",
+        "Nombre": "Nombre de la actividad.",
+        "dij": "Duración de la actividad (días).",
+        "ti": "Tiempo EARLY del suceso de origen i.",
+        "tj": "Tiempo EARLY del suceso de destino j.",
+        "t*i": "Tiempo LAST del suceso de origen i.",
+        "t*j": "Tiempo LAST del suceso de destino j.",
+        "Hi": "Holgura del suceso de origen. Fórmula: Hi = t*i − ti.",
+        "Hj": "Holgura del suceso de destino. Fórmula: Hj = t*j − tj.",
+        "HTij": (
+            "Holgura total de la actividad. "
+            "Fórmula: HTij = t*j − ti − dij. Si HTij = 0, es crítica."
         ),
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "Actividad": st.column_config.TextColumn(
-                "Actividad", help="Suceso de origen i y suceso de destino j (i-j)."
-            ),
-            "Nombre": st.column_config.TextColumn(
-                "Nombre", help="Nombre de la actividad."
-            ),
-            "dij": st.column_config.NumberColumn(
-                "dij", help="Duración de la actividad (días)."
-            ),
-            "ti": st.column_config.NumberColumn(
-                "ti", help="Tiempo EARLY del suceso de origen i."
-            ),
-            "tj": st.column_config.NumberColumn(
-                "tj", help="Tiempo EARLY del suceso de destino j."
-            ),
-            "t*i": st.column_config.NumberColumn(
-                "t*i", help="Tiempo LAST del suceso de origen i."
-            ),
-            "t*j": st.column_config.NumberColumn(
-                "t*j", help="Tiempo LAST del suceso de destino j."
-            ),
-            "Hi": st.column_config.NumberColumn(
-                "Hi", help="Holgura del suceso de origen. Fórmula: Hi = t*i − ti."
-            ),
-            "Hj": st.column_config.NumberColumn(
-                "Hj", help="Holgura del suceso de destino. Fórmula: Hj = t*j − tj."
-            ),
-            "HTij": st.column_config.NumberColumn(
-                "HTij",
-                help=(
-                    "Holgura total de la actividad. "
-                    "Fórmula: HTij = t*j − ti − dij. Si HTij = 0, es crítica."
-                ),
-            ),
-            "CC": st.column_config.TextColumn(
-                "CC", help="Camino Crítico: CC si HTij = 0; en caso contrario, -."
-            ),
-        },
+        "CC": "Camino Crítico: CC si HTij = 0; en caso contrario, -.",
+    }
+    filas_holgura = []
+    for _, fila in tabla.iterrows():
+        filas_holgura.append(
+            {
+                "Actividad": fila["Actividad"],
+                "Nombre": fila["Nombre"],
+                "dij": _fmt_num(fila["dij"]),
+                "ti": _fmt_num(fila["ti"]),
+                "tj": _fmt_num(fila["tj"]),
+                "t*i": _fmt_num(fila["t*i"]),
+                "t*j": _fmt_num(fila["t*j"]),
+                "Hi": _fmt_num(fila["Hi"]),
+                "Hj": _fmt_num(fila["Hj"]),
+                "HTij": _fmt_num(fila["HTij"]),
+                "CC": fila["CC"],
+            }
+        )
+    _tabla_apuntes(
+        columnas_holgura,
+        filas_holgura,
+        ayudas=ayudas_holgura,
+        clases_celda=lambda valor, col: (
+            ["critico"] if col == "CC" and valor == "CC" else []
+        ),
     )
     st.caption(
         "Holgura del suceso: Hi = t*i − ti ; Hj = t*j − tj. "
@@ -551,32 +586,21 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
                 "LF\nFin tardío": _celda_calendario(res["lf"][n]),
             }
         )
-    st.dataframe(
-        pd.DataFrame(filas_cal),
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "Actividad": st.column_config.TextColumn(
-                "Actividad", help="Nombre de la actividad."
-            ),
-            "ES\nInicio temprano": st.column_config.TextColumn(
-                "ES · Inicio temprano",
-                help="Early Start: valor PERT y fecha calendario.",
-            ),
-            "EF\nFin temprano": st.column_config.TextColumn(
-                "EF · Fin temprano",
-                help="Early Finish: valor PERT y fecha calendario.",
-            ),
-            "LS\nInicio tardío": st.column_config.TextColumn(
-                "LS · Inicio tardío",
-                help="Late Start: valor PERT y fecha calendario.",
-            ),
-            "LF\nFin tardío": st.column_config.TextColumn(
-                "LF · Fin tardío",
-                help="Late Finish: valor PERT y fecha calendario.",
-            ),
-        },
-    )
+    columnas_cal = [
+        "Actividad",
+        "ES\nInicio temprano",
+        "EF\nFin temprano",
+        "LS\nInicio tardío",
+        "LF\nFin tardío",
+    ]
+    ayudas_cal = {
+        "Actividad": "Nombre de la actividad.",
+        "ES\nInicio temprano": "Early Start: valor PERT y fecha calendario.",
+        "EF\nFin temprano": "Early Finish: valor PERT y fecha calendario.",
+        "LS\nInicio tardío": "Late Start: valor PERT y fecha calendario.",
+        "LF\nFin tardío": "Late Finish: valor PERT y fecha calendario.",
+    }
+    _tabla_apuntes(columnas_cal, filas_cal, ayudas=ayudas_cal)
     st.caption(
         "Supuesto: se trabaja de lunes a viernes. Las fechas de fin son el "
         "momento en que la actividad queda terminada. "
