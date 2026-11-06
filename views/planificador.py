@@ -402,10 +402,10 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     filas_cal = []
     for _, row in res["tabla"].iterrows():
         act = row["Actividad"]
-        ti = row["ti"]
-        tj = row["tj"]
-        ti_star = row["t*i"]
-        tj_star = row["t*j"]
+        ti = row.get("ti", row.get("ES", 0)) if hasattr(row, "get") else (row["ti"] if "ti" in row else row.get("ES", 0))
+        tj = row.get("tj", row.get("EF", 0)) if hasattr(row, "get") else (row["tj"] if "tj" in row else row.get("EF", 0))
+        ti_star = row.get("t*i", row.get("LS", 0)) if hasattr(row, "get") else (row["t*i"] if "t*i" in row else row.get("LS", 0))
+        tj_star = row.get("t*j", row.get("LF", 0)) if hasattr(row, "get") else (row["t*j"] if "t*j" in row else row.get("LF", 0))
         es_date = (inicio + _DIAS_LABORABLES * int(ti)).strftime("%a %d/%m")
         ef_date = (inicio + _DIAS_LABORABLES * int(tj)).strftime("%a %d/%m")
         ls_date = (inicio + _DIAS_LABORABLES * int(ti_star)).strftime("%a %d/%m")
