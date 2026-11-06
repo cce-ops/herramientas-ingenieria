@@ -263,27 +263,31 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         )
         st.info(f"Probabilidad de éxito: **{probabilidad:.2f}%**")
 
-    # --- Tabla de holgura y camino critico con "?" explicativos ---
-    st.markdown("**Tabla de Resultados (Holgura y Camino Crítico)**")
+    # --- Tabla de holgura y camino critico con "?" explicativos (como en apuntes) ---
+    st.markdown("**Cálculo de Holgura y Camino Crítico**")
     st.dataframe(
         res["tabla"].style.format({
             "d_ij": "{:.2f}",
-            "ES": "{:.2f}",
-            "EF": "{:.2f}",
-            "LS": "{:.2f}",
-            "LF": "{:.2f}",
-            "Holgura": "{:.2f}",
+            "ti": "{:.2f}",
+            "tj": "{:.2f}",
+            "t*i": "{:.2f}",
+            "t*j": "{:.2f}",
+            "Hi": "{:.2f}",
+            "Hj": "{:.2f}",
+            "HTij": "{:.2f}",
         }),
         width="stretch",
         column_config={
             "Actividad": st.column_config.TextColumn("Actividad", help="Nombre de la actividad."),
-            "d_ij": st.column_config.NumberColumn("d_ij (duración)", help="Duración. Fórmula PERT: t_e = (t_o + 4·t_m + t_p)/6."),
-            "ES": st.column_config.NumberColumn("ES (Early Start)", help="Inicio temprano. Fórmula: ES = max(EF de predecesores)."),
-            "EF": st.column_config.NumberColumn("EF (Early Finish)", help="Fin temprano. Fórmula: EF = ES + d_ij."),
-            "LS": st.column_config.NumberColumn("LS (Late Start)", help="Inicio tardío. Fórmula: LS = LF - d_ij."),
-            "LF": st.column_config.NumberColumn("LF (Late Finish)", help="Fin tardío. Fórmula: LF = min(LS de sucesores)."),
-            "Holgura": st.column_config.NumberColumn("H (Holgura)", help="Holgura total. Fórmula: H = LF - EF. Si H=0, es crítica."),
-            "CC": st.column_config.TextColumn("CC (Camino Crítico)", help="Marca si la actividad pertenece al camino crítico (H=0)."),
+            "d_ij": st.column_config.NumberColumn("d_ij (duración)", help="Duración de la actividad (días)."),
+            "ti": st.column_config.NumberColumn("t_i (EARLY origen)", help="Tiempo EARLY del suceso de origen. Fórmula: t_i = max(t_i + d_ij de predecesores)."),
+            "tj": st.column_config.NumberColumn("t_j (EARLY destino)", help="Tiempo EARLY del suceso de destino. Fórmula: t_j = t_i + d_ij."),
+            "t*i": st.column_config.NumberColumn("t*_i (LAST origen)", help="Tiempo LAST del suceso de origen. Fórmula: t*_i = min(t*_j - d_ij de sucesores)."),
+            "t*j": st.column_config.NumberColumn("t*_j (LAST destino)", help="Tiempo LAST del suceso de destino. Fórmula: t*_j = t*_i + d_ij."),
+            "Hi": st.column_config.NumberColumn("Hi (holgura suceso origen)", help="Holgura del suceso de origen. Fórmula: Hi = t*_i - t_i."),
+            "Hj": st.column_config.NumberColumn("Hj (holgura suceso destino)", help="Holgura del suceso de destino. Fórmula: Hj = t*_j - t_j."),
+            "HTij": st.column_config.NumberColumn("HTij (holgura actividad)", help="Holgura total de la actividad. Fórmula: HTij = t*_j - t_i - d_ij. Si HTij=0, es crítica."),
+            "CC": st.column_config.TextColumn("CC (Camino Crítico)", help="Marca si la actividad pertenece al camino crítico (HTij=0)."),
         },
         hide_index=True,
     )
