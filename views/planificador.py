@@ -416,7 +416,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             "EF (fecha)": ef_date,
             "LS (fecha)": ls_date,
             "LF (fecha)": lf_date,
-            "H": row["HTij"],
+            "H": row.get("HTij", row.get("Holgura", 0)),
         })
     df_cal = pd.DataFrame(filas_cal)
     st.dataframe(
