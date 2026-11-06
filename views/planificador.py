@@ -225,62 +225,6 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         st.info(f"Probabilidad de éxito: **{probabilidad:.2f}%**")
     st.dataframe(res["tabla"], width="stretch")
 
-    # --- Diagrama PERT AOA (Activity on Arrow) para modo basico ---
-    if not res.get("usar_pert", False):
-        grafo_aon = res["grafo"]
-        duraciones = {n: grafo_aon.nodes[n].get("dur", 1) for n in grafo_aon.nodes()}
-        grafo_aoa, mapping = _aon_to_aoa(grafo_aon.copy(), duraciones)
-        # Calcular EARLY/LAST para el grafo AOA
-        nodos_aoa = list(nx.topological_sort(grafo_aoa))
-        t_early = {n: 0 for n in nodos_aoa}
-        for n in nodos_aoa:
-            for p in grafo_aoa.predecessors(n):
-                t_early[n] = max(t_early[n], t_early[p] + grafo_aoa[p][n].get("te", 0))
-        duracion_aoa = t_early[nodos_aoa[-1]] if nodos_aoa else 0
-        t_last = {n: duracion_aoa for n in nodos_aoa}
-        for n in reversed(nodos_aoa):
-            for s in grafo_aoa.successors(n):
-                t_last[n] = min(t_last[n], t_last[s] - grafo_aoa[n][s].get("te", 0))
-        criticos_aoa = set()
-        for u, v in grafo_aoa.edges():
-            if abs(t_early[u] + grafo_aoa[u][v].get("te", 0) - t_early[v]) < 1e-5 and abs(t_last[v] - t_early[v]) < 1e-5:
-                criticos_aoa.add(u)
-                criticos_aoa.add(v)
-        # Dibujar el PERT AOA
-        st.markdown("**Diagrama PERT (sucesos y actividades)**")
-        fig_pert, ax_pert = plt.subplots(figsize=(10, 5))
-        niveles_topo = {}
-        for n in grafo_aoa.nodes():
-            pred = list(grafo_aoa.predecessors(n))
-            nivel = 0 if not pred else max(niveles_topo.get(p, 0) for p in pred) + 1
-            niveles_topo[n] = nivel
-        por_nivel = {}
-        for n, nv in niveles_topo.items():
-            por_nivel.setdefault(nv, []).append(n)
-        pos_aoa = {}
-        for nv, nodos in por_nivel.items():
-            for idx, n in enumerate(nodos):
-                pos_aoa[n] = (nv * 3.0, -idx * 2.0)
-        colores_nodo = ["#e74c3c" if n in criticos_aoa else "#3498db" for n in grafo_aoa.nodes()]
-        nx.draw_networkx_nodes(grafo_aoa, pos_aoa, node_size=1500, node_color=colores_nodo, edgecolors="black", linewidths=2, ax=ax_pert)
-        etiquetas_nodo = {}
-        for n in grafo_aoa.nodes():
-            etiquetas_nodo[n] = f"{n}\nE={t_early[n]:.0f}\nL={t_last[n]:.0f}"
-        nx.draw_networkx_labels(grafo_aoa, pos_aoa, labels=etiquetas_nodo, font_size=7, font_weight="bold", ax=ax_pert)
-        colores_arista = ["red" if (u in criticos_aoa and v in criticos_aoa) else "gray" for u, v in grafo_aoa.edges()]
-        anchos = [3 if (u in criticos_aoa and v in criticos_aoa) else 1.5 for u, v in grafo_aoa.edges()]
-        estilos = ["dashed" if grafo_aoa[u][v].get("dur", 1) == 0 else "solid" for u, v in grafo_aoa.edges()]
-        for i, (u, v) in enumerate(grafo_aoa.edges()):
-            nx.draw_networkx_edges(grafo_aoa, pos_aoa, edgelist=[(u, v)], edge_color=colores_arista[i], width=anchos[i], arrows=True, arrowstyle="->", arrowsize=15, ax=ax_pert, style=estilos[i], connectionstyle="arc3,rad=0.05")
-        etiquetas = {}
-        for u, v in grafo_aoa.edges():
-            act = grafo_aoa[u][v].get("act", "")
-            dur = grafo_aoa[u][v].get("dur", "")
-            etiquetas[(u, v)] = f"{act}\n{dur}" if dur != 0 else f"{act}\n0"
-        nx.draw_networkx_edge_labels(grafo_aoa, pos_aoa, edge_labels=etiquetas, font_color="blue", ax=ax_pert, font_size=8)
-        ax_pert.axis("off")
-        mostrar_figura(fig_pert)
-
     col_gantt, col_grafo = st.columns(2)
 
     with col_gantt:
@@ -372,9 +316,13 @@ def _calcular_avanzado(df: pd.DataFrame, fecha_inicio):
     for _, row in df.iterrows():
         actividad = str(row["Actividad"]).strip()
         i, j = int(row["i (Origen)"]), int(row["j (Destino)"])
-        t_opt = float(row["t_opt"])
-        t_prob = float(row["t_prob"])
-        t_pes = float(row["t_pes"])
+        if "Duración" in df.columns:
+            dur = float(row["Duración"])
+            t_opt = t_prob = t_pes = dur
+        else:
+            t_opt = float(row["t_opt"])
+            t_prob = float(row["t_prob"])
+            t_pes = float(row["t_pes"])
 
         t_e = (t_opt + 4 * t_prob + t_pes) / 6
         varianza = ((t_pes - t_opt) / 6) ** 2
@@ -610,14 +558,31 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
 def _modo_avanzado() -> None:
     st.markdown("### 1. Datos de Actividades Sucesos (i $\\rightarrow$ j)")
 
-    datos_avanzados = {
-        "Actividad": ["A", "B", "C", "D", "B'", "C'"],
-        "i (Origen)": [1, 1, 2, 2, 3, 4],
-        "j (Destino)": [2, 3, 4, 5, 5, 5],
-        "t_opt": [1, 2, 3, 6, 0, 0],
-        "t_prob": [1, 2, 3, 6, 0, 0],
-        "t_pes": [1, 2, 3, 6, 0, 0],
-    }
+    modo_dur = st.selectbox(
+        "Tipo de duración:",
+        ["Duración fija (días)", "PERT (t_opt / t_prob / t_pes)"],
+        index=0,
+        key="plan__modo_dur_avanzado",
+        help="Si eliges 'Duración fija', se usa la misma duración para t_opt, t_prob y t_pes.",
+    )
+    usar_pert_av = modo_dur.startswith("PERT")
+
+    if usar_pert_av:
+        datos_avanzados = {
+            "Actividad": ["A", "B", "C", "D", "B'", "C'"],
+            "i (Origen)": [1, 1, 2, 2, 3, 4],
+            "j (Destino)": [2, 3, 4, 5, 5, 5],
+            "t_opt": [1, 2, 3, 6, 0, 0],
+            "t_prob": [1, 2, 3, 6, 0, 0],
+            "t_pes": [1, 2, 3, 6, 0, 0],
+        }
+    else:
+        datos_avanzados = {
+            "Actividad": ["A", "B", "C", "D", "B'", "C'"],
+            "i (Origen)": [1, 1, 2, 2, 3, 4],
+            "j (Destino)": [2, 3, 4, 5, 5, 5],
+            "Duración": [1, 2, 3, 6, 0, 0],
+        }
     df_avanz = pd.DataFrame(datos_avanzados)
     df_editado = st.data_editor(
         df_avanz, num_rows="dynamic", width="stretch", key="plan__tabla_avanzada"
