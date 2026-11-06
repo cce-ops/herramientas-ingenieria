@@ -37,39 +37,71 @@ R_AVANZADO = "plan__resultado_avanzado"
 
 _DIAS_LABORABLES = CustomBusinessDay(weekmask="Mon Tue Wed Thu Fri")
 
+_DIAS_ES = {
+    "Mon": "lun",
+    "Tue": "mar",
+    "Wed": "mié",
+    "Thu": "jue",
+    "Fri": "vie",
+    "Sat": "sáb",
+    "Sun": "dom",
+}
+
+
+def _fmt_num(valor) -> str:
+    """Formatea un numero sin decimales innecesarios (1, 2.5, 1.556...)."""
+    valor = float(valor)
+    if abs(valor - round(valor)) < 1e-9:
+        return str(int(round(valor)))
+    return f"{valor:.3f}".rstrip("0").rstrip(".")
+
+
+
 
 # ---------------------------------------------------------------------------
 # Modo Basico (Activity on Node)
 # ---------------------------------------------------------------------------
 def _calcular_basico(df: pd.DataFrame, fecha_inicio, usar_pert: bool = False):
-    """Construye el grafo AON y calcula ES/EF/LS/LF, holgura y camino critico.
-    Si usar_pert=True, calcula t_e y varianza a partir de t_opt/t_prob/t_pes.
+    """Construye el grafo AON y calcula los tiempos PERT/AOA.
+
+    Devuelve, ademas del grafo AON, el grafo AOA (actividades como aristas) y
+    la tabla de holgura con el formato de los apuntes:
+    Actividad (i-j), Nombre, dij, ti, tj, t*i, t*j, Hi, Hj, HTij, CC.
     """
     grafo = nx.DiGraph()
     for _, row in df.iterrows():
         tarea = str(row["Tarea"]).strip()
+        if not tarea:
+            continue
         if usar_pert:
             t_opt = float(row["t_opt"])
             t_prob = float(row["t_prob"])
             t_pes = float(row["t_pes"])
             te = (t_opt + 4 * t_prob + t_pes) / 6
             var = ((t_pes - t_opt) / 6) ** 2
-            grafo.add_node(tarea, dur=te, var=var, t_opt=t_opt, t_prob=t_prob, t_pes=t_pes)
+            grafo.add_node(
+                tarea, dur=te, var=var, t_opt=t_opt, t_prob=t_prob, t_pes=t_pes
+            )
         else:
-            grafo.add_node(tarea, dur=int(row["Duración"]), var=0.0)
+            dur = float(row["Duración"])
+            grafo.add_node(
+                tarea, dur=dur, var=0.0, t_opt=dur, t_prob=dur, t_pes=dur
+            )
         for padre in str(row["Predecesores"]).split(","):
             padre = padre.strip()
             if padre:
                 grafo.add_edge(padre, tarea)
 
     orden = list(nx.topological_sort(grafo))
+    duraciones = {n: grafo.nodes[n]["dur"] for n in orden}
 
+    # --- Tiempos AON (para el calendario y el Gantt) ---
     es, ef = {}, {}
     for nodo in orden:
-        es[nodo] = max([ef[p] for p in grafo.predecessors(nodo)], default=0)
+        es[nodo] = max([ef[p] for p in grafo.predecessors(nodo)], default=0.0)
         ef[nodo] = es[nodo] + grafo.nodes[nodo]["dur"]
 
-    duracion_total = max(ef.values())
+    duracion_total = max(ef.values()) if ef else 0.0
 
     ls, lf = {}, {}
     for nodo in reversed(orden):
@@ -77,71 +109,97 @@ def _calcular_basico(df: pd.DataFrame, fecha_inicio, usar_pert: bool = False):
         lf[nodo] = min([ls[s] for s in sucesores], default=duracion_total)
         ls[nodo] = lf[nodo] - grafo.nodes[nodo]["dur"]
 
-    filas = []
-    var_proy = 0.0
-    for nodo in orden:
-        holgura = lf[nodo] - es[nodo] - grafo.nodes[nodo]["dur"]
-        if usar_pert and holgura < 1e-5:
-            var_proy += grafo.nodes[nodo]["var"]
-        for u, v in grafo.edges():
-            if u == nodo or v == nodo:
-                grafo[u][v]["is_critical"] = abs(holgura) < 1e-5
-        filas.append(
-            {
-                "Actividad": nodo,
-                "d_ij": round(grafo.nodes[nodo]["dur"], 2) if usar_pert else grafo.nodes[nodo]["dur"],
-                "ES": round(es[nodo], 2) if usar_pert else es[nodo],
-                "EF": round(ef[nodo], 2) if usar_pert else ef[nodo],
-                "LS": round(ls[nodo], 2) if usar_pert else ls[nodo],
-                "LF": round(lf[nodo], 2) if usar_pert else lf[nodo],
-                "Holgura": round(holgura, 2) if usar_pert else holgura,
-                "CC": "Sí" if holgura < 1e-5 else "",
-            }
-        )
+    criticos = [
+        n for n in orden
+        if abs(lf[n] - es[n] - grafo.nodes[n]["dur"]) < 1e-5
+    ]
+    var_proy = sum(grafo.nodes[n].get("var", 0.0) for n in criticos)
 
-    criticos = [n for n in orden if ls[n] - es[n] < 1e-5]
     for u, v in grafo.edges():
         grafo[u][v]["is_critical"] = (u in criticos and v in criticos)
-    inicio = pd.to_datetime(fecha_inicio)
 
+    # --- Conversion AON -> AOA y tabla de holgura de los apuntes ---
+    grafo_aoa, mapping = _aon_to_aoa(grafo.copy(), duraciones)
+    nodos_aoa = list(nx.topological_sort(grafo_aoa))
+
+    t_early = {n: 0.0 for n in nodos_aoa}
+    for n in nodos_aoa:
+        for p in grafo_aoa.predecessors(n):
+            t_early[n] = max(
+                t_early[n], t_early[p] + grafo_aoa[p][n].get("te", 0.0)
+            )
+
+    t_last = {}
+    for n in nodos_aoa:
+        if grafo_aoa.out_degree(n) == 0:
+            t_last[n] = t_early[n]
+        else:
+            t_last[n] = float("inf")
+    for n in reversed(nodos_aoa):
+        sucesores = list(grafo_aoa.successors(n))
+        if sucesores:
+            t_last[n] = min(
+                t_last[s] - grafo_aoa[n][s].get("te", 0.0) for s in sucesores
+            )
+
+    filas = []
+    for u, v, datos in grafo_aoa.edges(data=True):
+        dij = datos.get("te", 0.0)
+        ti = t_early[u]
+        tj = t_early[v]
+        ti_star = t_last[u]
+        tj_star = t_last[v]
+        filas.append(
+            {
+                "Actividad": f"{u}-{v}",
+                "Nombre": datos.get("act", ""),
+                "dij": dij,
+                "ti": ti,
+                "tj": tj,
+                "t*i": ti_star,
+                "t*j": tj_star,
+                "Hi": ti_star - ti,
+                "Hj": tj_star - tj,
+                "HTij": tj_star - ti - dij,
+                "CC": "CC" if abs(tj_star - ti - dij) < 1e-5 else "-",
+                "_orden": (ti, datos.get("act", "")),
+            }
+        )
+    filas.sort(key=lambda f: f["_orden"])
+    for fila in filas:
+        fila.pop("_orden", None)
+
+    inicio = pd.to_datetime(fecha_inicio)
     gantt = pd.DataFrame(
         [
             {
                 "Tarea": nodo,
-                "Inicio": inicio + _DIAS_LABORABLES * int(es[nodo]) if not usar_pert else inicio + _DIAS_LABORABLES * int(round(es[nodo])),
-                "Fin": inicio + _DIAS_LABORABLES * int(ef[nodo]) if not usar_pert else inicio + _DIAS_LABORABLES * int(round(ef[nodo])),
+                "Inicio": inicio + _DIAS_LABORABLES * int(round(es[nodo])),
+                "Fin": inicio + _DIAS_LABORABLES * int(round(ef[nodo])),
                 "Crítica": "Sí" if nodo in criticos else "No",
             }
             for nodo in orden
         ]
     )
 
-    # Matriz de Zaderenko (solo para modo duracion fija, se calcula del grafo AON)
-    # Se construye como matriz de precedencias: filas=origen, columnas=destino, valor=duracion
-    etiquetas = [str(n) for n in orden]
-    matriz_z = pd.DataFrame("", index=etiquetas, columns=etiquetas, dtype=object)
-    for u, v in grafo.edges():
-        dur = grafo[u][v].get("dur", grafo.nodes[u].get("dur", 0)) if "dur" in grafo[u][v] else grafo.nodes[u].get("dur", 0)
-        matriz_z.loc[str(u), str(v)] = str(dur)
-    # Añadir t_i* (LAST) y t_j (EARLY) como en el modo avanzado
-    es_map = {n: es[n] for n in orden}
-    ls_map = {n: ls[n] for n in orden}
-    matriz_z.loc["t_i*"] = [f"{ls_map.get(n, 0):.2f}" for n in orden]
-    matriz_z["t_j"] = [f"{es_map.get(n, 0):.2f}" for n in orden] + [""]
-
     return {
         "grafo": grafo,
+        "aoa": grafo_aoa,
+        "nodos_aoa": nodos_aoa,
+        "early": t_early,
+        "last": t_last,
         "orden": orden,
+        "es": es,
+        "ef": ef,
+        "ls": ls,
+        "lf": lf,
         "criticos": criticos,
-        "duracion_total": round(duracion_total, 2) if usar_pert else duracion_total,
-        "varianza": round(var_proy, 2) if usar_pert else 0.0,
+        "duracion_total": duracion_total,
+        "varianza": var_proy,
         "tabla": pd.DataFrame(filas),
         "gantt": gantt,
         "usar_pert": usar_pert,
-        "matriz_z": matriz_z,
     }
-
-
 
 
 def _aon_to_aoa(grafo_aon, duraciones):
@@ -236,236 +294,398 @@ def _aon_to_aoa(grafo_aon, duraciones):
 
 
 def _pintar_basico(res: dict, fecha_inicio) -> None:
+    if "aoa" not in res:
+        st.warning(
+            "El resultado guardado es de una version anterior. "
+            "Vuelve a pulsar **Calcular Proyecto Básico**."
+        )
+        return
+
     inicio = pd.to_datetime(fecha_inicio)
-    fecha_fin = inicio + _DIAS_LABORABLES * int(res["duracion_total"])
+    dur_total = res["duracion_total"]
+    fecha_fin = inicio + _DIAS_LABORABLES * int(round(dur_total))
 
     st.success(
-        f"**Duración total:** {res['duracion_total']} días laborables | "
+        f"**Duración total:** {_fmt_num(dur_total)} días laborables | "
         f"**Fecha de finalización:** {fecha_fin.strftime('%d/%m/%Y')}"
     )
 
-    grafo_aon = res["grafo"]
-    duraciones = {n: grafo_aon.nodes[n].get("dur", 1) for n in grafo_aon.nodes()}
+    grafo_aoa = res["aoa"]
+    nodos_aoa = res["nodos_aoa"]
+    t_early = res["early"]
+    t_last = res["last"]
     usar_pert = res.get("usar_pert", False)
 
-    # --- 1. Diagrama PERT AOA (solo duracion fija) ---
-    if not usar_pert:
-        grafo_aoa, mapping = _aon_to_aoa(grafo_aon.copy(), duraciones)
-        nodos_aoa = list(nx.topological_sort(grafo_aoa))
-        t_early = {n: 0 for n in nodos_aoa}
-        for n in nodos_aoa:
-            for p in grafo_aoa.predecessors(n):
-                t_early[n] = max(t_early[n], t_early[p] + grafo_aoa[p][n].get("te", 0))
-        duracion_aoa = t_early[nodos_aoa[-1]] if nodos_aoa else 0
-        t_last = {n: duracion_aoa for n in nodos_aoa}
-        for n in reversed(nodos_aoa):
-            for s in grafo_aoa.successors(n):
-                t_last[n] = min(t_last[n], t_last[s] - grafo_aoa[n][s].get("te", 0))
-        criticos_aoa = set()
-        for u, v in grafo_aoa.edges():
-            if abs(t_early[u] + grafo_aoa[u][v].get("te", 0) - t_early[v]) < 1e-5 and abs(t_last[v] - t_early[v]) < 1e-5:
-                criticos_aoa.add(u)
-                criticos_aoa.add(v)
-        st.markdown("**Diagrama PERT (sucesos y actividades)**")
-        fig_pert, ax_pert = plt.subplots(figsize=(10, 6))
-        niveles_topo = {}
-        for n in grafo_aoa.nodes():
-            pred = list(grafo_aoa.predecessors(n))
-            nivel = 0 if not pred else max(niveles_topo.get(p, 0) for p in pred) + 1
-            niveles_topo[n] = nivel
-        por_nivel = {}
-        for n, nv in niveles_topo.items():
-            por_nivel.setdefault(nv, []).append(n)
-        pos_aoa = {}
-        for nv, nodos in por_nivel.items():
-            for idx, n in enumerate(nodos):
-                pos_aoa[n] = (nv * 3.0, -idx * 2.0)
-        colores_nodo = ["#e74c3c" if n in criticos_aoa else "#3498db" for n in grafo_aoa.nodes()]
-        nx.draw_networkx_nodes(grafo_aoa, pos_aoa, node_size=1500, node_color=colores_nodo, edgecolors="black", linewidths=2, ax=ax_pert)
-        etiquetas_nodo = {}
-        for n in grafo_aoa.nodes():
-            te = t_early.get(n, 0)
-            tl = t_last.get(n, 0)
-            etiquetas_nodo[n] = f"{n}\nE={te:.0f}\nL={tl:.0f}"
-        nx.draw_networkx_labels(grafo_aoa, pos_aoa, labels=etiquetas_nodo, font_size=7, font_weight="bold", ax=ax_pert)
-        colores_arista = ["red" if (u in criticos_aoa and v in criticos_aoa) else "gray" for u, v in grafo_aoa.edges()]
-        anchos = [3 if (u in criticos_aoa and v in criticos_aoa) else 1.5 for u, v in grafo_aoa.edges()]
-        estilos = ["dashed" if grafo_aoa[u][v].get("dur", 1) == 0 else "solid" for u, v in grafo_aoa.edges()]
-        for i, (u, v) in enumerate(grafo_aoa.edges()):
-            nx.draw_networkx_edges(grafo_aoa, pos_aoa, edgelist=[(u, v)], edge_color=colores_arista[i], width=anchos[i], arrows=True, arrowstyle="->", arrowsize=15, ax=ax_pert, style=estilos[i], connectionstyle="arc3,rad=0.05")
-        etiquetas = {}
-        for u, v in grafo_aoa.edges():
-            act = grafo_aoa[u][v].get("act", "")
-            dur = grafo_aoa[u][v].get("dur", "")
-            etiquetas[(u, v)] = f"{act}\n{dur}" if dur != 0 else f"{act}\n0"
-        nx.draw_networkx_edge_labels(grafo_aoa, pos_aoa, edge_labels=etiquetas, font_color="blue", ax=ax_pert, font_size=8)
-        ax_pert.axis("off")
-        mostrar_figura(fig_pert)
+    # --- 1. Diagrama PERT (sucesos y actividades) ---
+    st.markdown("**1. Diagrama PERT (sucesos y actividades)**")
+    fig_pert, ax_pert = plt.subplots(figsize=(10, 6))
 
-    # --- 2. Matriz de Zaderenko (del grafo AOA) ---
-    if not usar_pert:
-        grafo_aon = res["grafo"]
-        duraciones = {n: grafo_aon.nodes[n].get("dur", 1) for n in grafo_aon.nodes()}
-        grafo_aoa_z, mapping_z = _aon_to_aoa(grafo_aon.copy(), duraciones)
-        nodos_z = list(nx.topological_sort(grafo_aoa_z))
-        t_early_z = {n: 0 for n in nodos_z}
-        for n in nodos_z:
-            for p in grafo_aoa_z.predecessors(n):
-                t_early_z[n] = max(t_early_z[n], t_early_z[p] + grafo_aoa_z[p][n].get("te", 0))
-        t_last_z = {n: t_early_z[nodos_z[-1]] for n in nodos_z}
-        for n in reversed(nodos_z):
-            for s in grafo_aoa_z.successors(n):
-                t_last_z[n] = min(t_last_z[n], t_last_z[s] - grafo_aoa_z[n][s].get("te", 0))
-        etiquetas_z = [str(n) for n in nodos_z]
-        matriz_z = pd.DataFrame("", index=etiquetas_z, columns=etiquetas_z, dtype=object)
-        for u, v, datos in grafo_aoa_z.edges(data=True):
-            matriz_z.loc[str(u), str(v)] = f"{datos['te']:.2f}"
-        matriz_z.loc["t_i*"] = [f"{t_last_z[n]:.2f}" for n in nodos_z]
-        matriz_z["t_j"] = [f"{t_early_z[n]:.2f}" for n in nodos_z] + [""]
-        st.markdown("**Matriz de Zaderenko**")
-        st.dataframe(matriz_z, width="stretch")
+    niveles_topo = {}
+    for n in grafo_aoa.nodes():
+        pred = list(grafo_aoa.predecessors(n))
+        nivel = 0 if not pred else max(niveles_topo.get(p, 0) for p in pred) + 1
+        niveles_topo[n] = nivel
 
-    # --- 3. Cálculo de Holgura y Camino Crítico ---
-    st.markdown("**Cálculo de Holgura y Camino Crítico**")
-    st.dataframe(
-        res["tabla"].style.format({
-            "d_ij": "{:.2f}",
-            "ti": "{:.2f}",
-            "tj": "{:.2f}",
-            "t*i": "{:.2f}",
-            "t*j": "{:.2f}",
-            "Hi": "{:.2f}",
-            "Hj": "{:.2f}",
-            "HTij": "{:.2f}",
-        }),
-        width="stretch",
-        column_config={
-            "Actividad": st.column_config.TextColumn("Actividad", help="Nombre de la actividad."),
-            "d_ij": st.column_config.NumberColumn("d_ij (duración)", help="Duración de la actividad (días)."),
-            "ti": st.column_config.NumberColumn("t_i (EARLY origen)", help="Tiempo EARLY del suceso de origen."),
-            "tj": st.column_config.NumberColumn("t_j (EARLY destino)", help="Tiempo EARLY del suceso de destino."),
-            "t*i": st.column_config.NumberColumn("t*_i (LAST origen)", help="Tiempo LAST del suceso de origen."),
-            "t*j": st.column_config.NumberColumn("t*_j (LAST destino)", help="Tiempo LAST del suceso de destino."),
-            "Hi": st.column_config.NumberColumn("Hi (holgura suceso origen)", help="Holgura del suceso de origen. Fórmula: Hi = t*_i - t_i."),
-            "Hj": st.column_config.NumberColumn("Hj (holgura suceso destino)", help="Holgura del suceso de destino. Fórmula: Hj = t*_j - t_j."),
-            "HTij": st.column_config.NumberColumn("HTij (holgura actividad)", help="Holgura total de la actividad. Fórmula: HTij = t*_j - t_i - d_ij. Si HTij=0, es crítica."),
-            "CC": st.column_config.TextColumn("CC (Camino Crítico)", help="Marca si la actividad pertenece al camino crítico (HTij=0)."),
-        },
-        hide_index=True,
+    por_nivel = {}
+    for n, nv in niveles_topo.items():
+        por_nivel.setdefault(nv, []).append(n)
+
+    pos_aoa = {}
+    for nv, nodos in por_nivel.items():
+        # El suceso con mayor tiempo EARLY queda arriba (como en los apuntes)
+        for idx, n in enumerate(sorted(nodos, key=lambda x: -t_early[x])):
+            pos_aoa[n] = (nv * 3.0, -idx * 2.0)
+
+    def _es_critica_aoa(u, v):
+        dij = grafo_aoa[u][v].get("te", 0.0)
+        return (
+            abs(t_early[u] + dij - t_early[v]) < 1e-5
+            and abs(t_last[v] - t_early[v]) < 1e-5
+        )
+
+    colores_nodo = [
+        "#e74c3c" if any(_es_critica_aoa(u, v) for u, v in grafo_aoa.edges() if u == n or v == n) else "#3498db"
+        for n in grafo_aoa.nodes()
+    ]
+    nx.draw_networkx_nodes(
+        grafo_aoa, pos_aoa, node_size=1600, node_color=colores_nodo,
+        edgecolors="black", linewidths=2, ax=ax_pert,
+    )
+    etiquetas_nodo = {
+        n: f"{n}\nE={_fmt_num(t_early[n])}\nL={_fmt_num(t_last[n])}"
+        for n in grafo_aoa.nodes()
+    }
+    nx.draw_networkx_labels(
+        grafo_aoa, pos_aoa, labels=etiquetas_nodo, font_size=7,
+        font_weight="bold", ax=ax_pert,
+    )
+    for u, v in grafo_aoa.edges():
+        critica = _es_critica_aoa(u, v)
+        ficticia = grafo_aoa[u][v].get("dur", 1) == 0
+        nx.draw_networkx_edges(
+            grafo_aoa, pos_aoa, edgelist=[(u, v)],
+            edge_color="red" if critica else "gray",
+            width=3 if critica else 1.5,
+            arrows=True, arrowstyle="->", arrowsize=15, ax=ax_pert,
+            style="dashed" if ficticia else "solid",
+            connectionstyle="arc3,rad=0.05",
+        )
+    etiquetas = {}
+    for u, v in grafo_aoa.edges():
+        act = grafo_aoa[u][v].get("act", "")
+        dur = grafo_aoa[u][v].get("te", 0)
+        etiquetas[(u, v)] = f"{act}\n{_fmt_num(dur)}"
+    nx.draw_networkx_edge_labels(
+        grafo_aoa, pos_aoa, edge_labels=etiquetas, font_color="blue",
+        ax=ax_pert, font_size=8,
+    )
+    ax_pert.axis("off")
+    mostrar_figura(fig_pert)
+
+    # --- 2. Matriz de Zaderenko ---
+    st.markdown("**2. Matriz de Zaderenko**")
+    etiquetas_filas = [f"{_fmt_num(t_early[n])}   {n}" for n in nodos_aoa]
+    columnas = [str(n) for n in nodos_aoa]
+    matriz_z = pd.DataFrame("", index=etiquetas_filas, columns=columnas)
+    matriz_z.index.name = "ti · i / j"
+    for u, v, datos in grafo_aoa.edges(data=True):
+        matriz_z.loc[f"{_fmt_num(t_early[u])}   {u}", str(v)] = _fmt_num(
+            datos.get("te", 0)
+        )
+    matriz_z.loc["t*i/j"] = [_fmt_num(t_last[n]) for n in nodos_aoa]
+    st.dataframe(matriz_z, width="stretch")
+    st.caption(
+        "Filas: tiempo EARLY (ti) y suceso i · Columnas: suceso j · "
+        "Última fila: tiempos LAST (t*i/j)."
     )
 
-    # --- 4. Tiempos Esperados y Varianzas PERT (solo modo PERT) ---
-    if res.get("usar_pert"):
-        st.markdown("**Tiempos Esperados y Varianzas PERT**")
-        filas_pert = []
-        grafo = res["grafo"]
-        for _, row in res["tabla"].iterrows():
-            act = row["Actividad"]
-            t_opt = t_prob = t_pes = None
-            var = None
-            if hasattr(grafo.nodes[act], "get") and "t_opt" in grafo.nodes[act]:
-                t_opt = grafo.nodes[act]["t_opt"]
-                t_prob = grafo.nodes[act]["t_prob"]
-                t_pes = grafo.nodes[act]["t_pes"]
-                var = round(grafo.nodes[act]["var"], 3)
-            filas_pert.append({
-                "Actividad": act,
-                "t_o": t_opt,
-                "t_m": t_prob,
-                "t_p": t_pes,
-                "t_e": row["d_ij"],
-                "σ²": var,
-            })
-        df_pert = pd.DataFrame(filas_pert)
-        st.dataframe(
-            df_pert.style.format({
-                "t_o": "{:.2f}",
-                "t_m": "{:.2f}",
-                "t_p": "{:.2f}",
-                "t_e": "{:.2f}",
+    # --- 3. Cálculo de la holgura y camino crítico ---
+    st.markdown("**3. Cálculo de la Holgura y Determinación del Camino Crítico**")
+    tabla = res["tabla"]
+    st.dataframe(
+        tabla.style.format(
+            {
+                "dij": "{:g}",
+                "ti": "{:g}",
+                "tj": "{:g}",
+                "t*i": "{:g}",
+                "t*j": "{:g}",
+                "Hi": "{:g}",
+                "Hj": "{:g}",
+                "HTij": "{:g}",
+            }
+        ),
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "Actividad": st.column_config.TextColumn(
+                "Actividad", help="Suceso de origen i y suceso de destino j (i-j)."
+            ),
+            "Nombre": st.column_config.TextColumn(
+                "Nombre", help="Nombre de la actividad."
+            ),
+            "dij": st.column_config.NumberColumn(
+                "dij", help="Duración de la actividad (días)."
+            ),
+            "ti": st.column_config.NumberColumn(
+                "ti", help="Tiempo EARLY del suceso de origen i."
+            ),
+            "tj": st.column_config.NumberColumn(
+                "tj", help="Tiempo EARLY del suceso de destino j."
+            ),
+            "t*i": st.column_config.NumberColumn(
+                "t*i", help="Tiempo LAST del suceso de origen i."
+            ),
+            "t*j": st.column_config.NumberColumn(
+                "t*j", help="Tiempo LAST del suceso de destino j."
+            ),
+            "Hi": st.column_config.NumberColumn(
+                "Hi", help="Holgura del suceso de origen. Fórmula: Hi = t*i − ti."
+            ),
+            "Hj": st.column_config.NumberColumn(
+                "Hj", help="Holgura del suceso de destino. Fórmula: Hj = t*j − tj."
+            ),
+            "HTij": st.column_config.NumberColumn(
+                "HTij",
+                help=(
+                    "Holgura total de la actividad. "
+                    "Fórmula: HTij = t*j − ti − dij. Si HTij = 0, es crítica."
+                ),
+            ),
+            "CC": st.column_config.TextColumn(
+                "CC", help="Camino Crítico: CC si HTij = 0; en caso contrario, -."
+            ),
+        },
+    )
+    st.caption(
+        "Holgura del suceso: Hi = t*i − ti ; Hj = t*j − tj. "
+        "Holgura total de la actividad: HTij = t*j − ti − dij."
+    )
+
+    # --- 4. Tiempos esperados y varianzas PERT ---
+    st.markdown("**4. Tiempos Esperados y Varianzas PERT**")
+    st.caption("te = (to + 4·tm + tp) / 6 ; σ² = [(tp − to) / 6]²")
+    if not usar_pert:
+        st.caption(
+            "Modo Duración fija: se toma to = tm = tp = dij. "
+            "Cambia a «PERT (t_opt / t_prob / t_pes)» para introducir los "
+            "tiempos optimista, más probable y pesimista del enunciado."
+        )
+    grafo = res["grafo"]
+    filas_pert = []
+    for n in res["orden"]:
+        nodo = grafo.nodes[n]
+        filas_pert.append(
+            {
+                "Actividad": n,
+                "tm": nodo.get("t_prob", nodo.get("dur", 0.0)),
+                "to": nodo.get("t_opt", nodo.get("dur", 0.0)),
+                "tp": nodo.get("t_pes", nodo.get("dur", 0.0)),
+                "te": nodo.get("dur", 0.0),
+                "σ²": nodo.get("var", 0.0),
+            }
+        )
+    df_pert = pd.DataFrame(filas_pert)
+    st.dataframe(
+        df_pert.style.format(
+            {
+                "tm": "{:g}",
+                "to": "{:g}",
+                "tp": "{:g}",
+                "te": "{:.2f}",
                 "σ²": "{:.3f}",
-            }, na_rep="-"),
-            width="stretch",
-            column_config={
-                "Actividad": st.column_config.TextColumn("Actividad", help="Nombre de la actividad."),
-                "t_o": st.column_config.NumberColumn("t_o (optimista)", help="Tiempo optimista (mejor caso)."),
-                "t_m": st.column_config.NumberColumn("t_m (probable)", help="Tiempo más probable (caso normal)."),
-                "t_p": st.column_config.NumberColumn("t_p (pesimista)", help="Tiempo pesimista (peor caso)."),
-                "t_e": st.column_config.NumberColumn("t_e (esperado)", help="Tiempo esperado. Fórmula: t_e = (t_o + 4·t_m + t_p)/6."),
-                "σ²": st.column_config.NumberColumn("σ² (varianza)", help="Varianza. Fórmula: σ² = [(t_p − t_o)/6]²."),
-            },
-            hide_index=True,
-        )
-
-    # --- 5. Calendario de Ejecución (solo fechas, sin duplicar ES/EF/LS/LF) ---
-    st.markdown("**Calendario de Ejecución**")
-    filas_cal = []
-    for _, row in res["tabla"].iterrows():
-        act = row["Actividad"]
-        ti = row.get("ti", row.get("ES", 0)) if hasattr(row, "get") else (row["ti"] if "ti" in row else row.get("ES", 0))
-        tj = row.get("tj", row.get("EF", 0)) if hasattr(row, "get") else (row["tj"] if "tj" in row else row.get("EF", 0))
-        ti_star = row.get("t*i", row.get("LS", 0)) if hasattr(row, "get") else (row["t*i"] if "t*i" in row else row.get("LS", 0))
-        tj_star = row.get("t*j", row.get("LF", 0)) if hasattr(row, "get") else (row["t*j"] if "t*j" in row else row.get("LF", 0))
-        es_date = (inicio + _DIAS_LABORABLES * int(ti)).strftime("%a %d/%m")
-        ef_date = (inicio + _DIAS_LABORABLES * int(tj)).strftime("%a %d/%m")
-        ls_date = (inicio + _DIAS_LABORABLES * int(ti_star)).strftime("%a %d/%m")
-        lf_date = (inicio + _DIAS_LABORABLES * int(tj_star)).strftime("%a %d/%m")
-        filas_cal.append({
-            "Actividad": act,
-            "ES (fecha)": es_date,
-            "EF (fecha)": ef_date,
-            "LS (fecha)": ls_date,
-            "LF (fecha)": lf_date,
-            "H": row.get("HTij", row.get("Holgura", 0)),
-        })
-    df_cal = pd.DataFrame(filas_cal)
-    st.dataframe(
-        df_cal,
+            }
+        ),
         width="stretch",
-        column_config={
-            "Actividad": st.column_config.TextColumn("Actividad", help="Nombre de la actividad."),
-            "ES (fecha)": st.column_config.TextColumn("ES (Inicio temprano)", help="Early Start + fecha."),
-            "EF (fecha)": st.column_config.TextColumn("EF (Fin temprano)", help="Early Finish + fecha."),
-            "LS (fecha)": st.column_config.TextColumn("LS (Inicio tardío)", help="Late Start + fecha."),
-            "LF (fecha)": st.column_config.TextColumn("LF (Fin tardío)", help="Late Finish + fecha."),
-            "H": st.column_config.NumberColumn("H (Holgura)", help="Holgura total = LF - EF."),
-        },
         hide_index=True,
+        column_config={
+            "Actividad": st.column_config.TextColumn(
+                "Actividad", help="Nombre de la actividad."
+            ),
+            "tm": st.column_config.NumberColumn(
+                "tm", help="Tiempo más probable (caso normal)."
+            ),
+            "to": st.column_config.NumberColumn(
+                "to", help="Tiempo optimista (mejor caso)."
+            ),
+            "tp": st.column_config.NumberColumn(
+                "tp", help="Tiempo pesimista (peor caso)."
+            ),
+            "te": st.column_config.NumberColumn(
+                "te", help="Tiempo esperado. Fórmula: te = (to + 4·tm + tp) / 6."
+            ),
+            "σ²": st.column_config.NumberColumn(
+                "σ²", help="Varianza. Fórmula: σ² = [(tp − to) / 6]²."
+            ),
+        },
+    )
+    camino = " – ".join(res["criticos"])
+    sigma_proy = np.sqrt(res["varianza"]) if res["varianza"] > 0 else 0.0
+    st.markdown(
+        f"**Camino crítico:** {camino} &nbsp;&nbsp; "
+        f"**Duración esperada = {_fmt_num(dur_total)} días**"
+    )
+    st.markdown(
+        f"**Varianza del camino crítico = {res['varianza']:.3f}** ; "
+        f"σ = {sigma_proy:.3f} días"
     )
 
-    # --- 7. Diagrama Gantt ---
-    col_gantt, col_grafo = st.columns(2)
-    with col_gantt:
-        fig_gantt = px.timeline(
-            res["gantt"],
-            x_start="Inicio",
-            x_end="Fin",
-            y="Tarea",
-            color="Crítica",
-            color_discrete_map={"Sí": "#e74c3c", "No": "#3498db"},
-        )
-        fig_gantt.update_yaxes(autorange="reversed")
-        st.plotly_chart(fig_gantt, width="stretch")
+    # --- 5. Calendario de Ejecución ---
+    st.markdown("**5. Calendario de Ejecución**")
 
-    # --- 8. Probabilidad de cumplimiento ---
-    if res.get("usar_pert") and res.get("varianza", 0) > 0:
-        st.markdown("**Probabilidad de Cumplimiento**")
-        desviacion = np.sqrt(res["varianza"])
-        st.write(
-            "Varianza (σ²): "
-            f"{res['varianza']:.2f} | "
-            f"Desviación (σ): {desviacion:.2f}"
+    def _celda_calendario(valor):
+        fecha = inicio + _DIAS_LABORABLES * int(round(valor))
+        return (
+            f"{_fmt_num(valor)}\n"
+            f"{_DIAS_ES[fecha.strftime('%a')]} {fecha.strftime('%d/%m')}"
         )
+
+    filas_cal = []
+    for n in res["orden"]:
+        filas_cal.append(
+            {
+                "Actividad": n,
+                "ES\nInicio temprano": _celda_calendario(res["es"][n]),
+                "EF\nFin temprano": _celda_calendario(res["ef"][n]),
+                "LS\nInicio tardío": _celda_calendario(res["ls"][n]),
+                "LF\nFin tardío": _celda_calendario(res["lf"][n]),
+            }
+        )
+    st.dataframe(
+        pd.DataFrame(filas_cal),
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "Actividad": st.column_config.TextColumn(
+                "Actividad", help="Nombre de la actividad."
+            ),
+            "ES\nInicio temprano": st.column_config.TextColumn(
+                "ES · Inicio temprano",
+                help="Early Start: valor PERT y fecha calendario.",
+            ),
+            "EF\nFin temprano": st.column_config.TextColumn(
+                "EF · Fin temprano",
+                help="Early Finish: valor PERT y fecha calendario.",
+            ),
+            "LS\nInicio tardío": st.column_config.TextColumn(
+                "LS · Inicio tardío",
+                help="Late Start: valor PERT y fecha calendario.",
+            ),
+            "LF\nFin tardío": st.column_config.TextColumn(
+                "LF · Fin tardío",
+                help="Late Finish: valor PERT y fecha calendario.",
+            ),
+        },
+    )
+    st.caption(
+        "Supuesto: se trabaja de lunes a viernes. Las fechas de fin son el "
+        "momento en que la actividad queda terminada. "
+        f"Fecha prevista de finalización del proyecto: "
+        f"{_DIAS_ES[fecha_fin.strftime('%a')]} {fecha_fin.strftime('%d/%m/%Y')}."
+    )
+
+    # --- 6. Diagrama de Gantt ---
+    st.markdown("**6. Diagrama de Gantt**")
+    fig_gantt = px.timeline(
+        res["gantt"],
+        x_start="Inicio",
+        x_end="Fin",
+        y="Tarea",
+        color="Crítica",
+        color_discrete_map={"Sí": "#e74c3c", "No": "#3498db"},
+    )
+    fig_gantt.update_yaxes(autorange="reversed")
+    st.plotly_chart(fig_gantt, width="stretch")
+
+    # --- 7. Probabilidad de Cumplimiento ---
+    st.markdown("**7. Probabilidad de Cumplimiento**")
+    st.markdown(
+        "La duración del proyecto se aproxima mediante una distribución normal "
+        "asociada al camino crítico esperado."
+    )
+    var = res["varianza"]
+    mu = dur_total
+    sigma = np.sqrt(var) if var > 0 else 0.0
+    st.markdown(
+        f"**Camino crítico:** {camino} &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"**μ = {_fmt_num(mu)} días** &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"**σ² = {var:.3f}** &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"**σ = {sigma:.3f} días**"
+    )
+    st.markdown("Para una fecha objetivo T*: t = (T* − μ) / σ ; P(cumplir) = Φ(t)")
+
+    # Tabla resumen: to, tm, tp y varianza por actividad critica y del proyecto
+    filas_resumen = []
+    for etiqueta, clave in (
+        ("Optimista to", "t_opt"),
+        ("Más probable tm", "t_prob"),
+        ("Pesimista tp", "t_pes"),
+    ):
+        fila = {"Duración (días)": etiqueta}
+        for n in res["criticos"]:
+            nodo = grafo.nodes[n]
+            fila[n] = _fmt_num(nodo.get(clave, nodo.get("dur", 0.0)))
+        fila["Proyecto"] = _fmt_num(
+            sum(
+                grafo.nodes[n].get(clave, grafo.nodes[n].get("dur", 0.0))
+                for n in res["criticos"]
+            )
+        )
+        filas_resumen.append(fila)
+
+    fila_var = {"Duración (días)": "Varianza σ²"}
+    for n in res["criticos"]:
+        fila_var[n] = f"{grafo.nodes[n].get('var', 0.0):.2f}"
+    fila_var["Proyecto"] = f"{var:.2f}"
+    filas_resumen.append(fila_var)
+
+    df_resumen = pd.DataFrame(filas_resumen).set_index("Duración (días)")
+    st.dataframe(df_resumen, width="stretch")
+
+    # Tabla de plazos objetivo y probabilidad
+    filas_plazo = []
+    base = int(round(mu))
+    for plazo in range(base - 1, base + 5):
+        fecha = inicio + _DIAS_LABORABLES * plazo
+        if sigma > 0:
+            t_valor = (plazo - mu) / sigma
+            probabilidad = stats.norm.cdf(t_valor)
+        else:
+            t_valor = 0.0
+            probabilidad = 1.0 if plazo >= mu else 0.0
+        filas_plazo.append(
+            {
+                "Plazo T*": plazo,
+                "Fecha calendario": (
+                    f"{_DIAS_ES[fecha.strftime('%a')]} {fecha.strftime('%d/%m')}"
+                ),
+                "t = (T* − μ) / σ": f"{t_valor:.2f}",
+                "P(t < T*)": f"{probabilidad * 100:.2f} %",
+            }
+        )
+    st.dataframe(pd.DataFrame(filas_plazo), width="stretch", hide_index=True)
+
+    prob_dos_dias = (
+        stats.norm.cdf(2 / sigma) * 100 if sigma > 0 else 100.0
+    )
+    st.markdown(
+        "**Lectura:** terminar en la fecha esperada tiene una probabilidad del "
+        "50 %. Con dos días laborables adicionales, la probabilidad sube "
+        f"aproximadamente al {prob_dos_dias:.0f} %."
+    )
+
+    with st.expander("Consulta rápida de otro plazo"):
         plazo_objetivo = st.number_input(
             "Plazo objetivo (días laborables):",
-            value=float(res["duracion_total"]) + 1,
+            value=float(base) + 1,
             key="plan__plazo_objetivo_basico",
         )
-        probabilidad = (
-            stats.norm.cdf((plazo_objetivo - res["duracion_total"]) / desviacion) * 100
-            if desviacion > 0 else 0.0
-        )
+        if sigma > 0:
+            probabilidad = stats.norm.cdf((plazo_objetivo - mu) / sigma) * 100
+        else:
+            probabilidad = 100.0 if plazo_objetivo >= mu else 0.0
         st.info(f"Probabilidad de éxito: **{probabilidad:.2f}%**")
+
 
 def _modo_basico() -> None:
     st.markdown("### 1. Datos de Entrada (Modo Básico)")
@@ -481,17 +701,17 @@ def _modo_basico() -> None:
 
     if usar_pert:
         datos_basicos = {
-            "Tarea": ["A", "B", "C", "D"],
-            "t_opt": [1, 1, 2, 2],
-            "t_prob": [1, 2, 3, 6],
-            "t_pes": [1, 3, 4, 10],
-            "Predecesores": ["", "", "A", "A"],
+            "Tarea": ["A", "B", "C", "D", "E"],
+            "t_opt": [1, 1, 3, 2, 4],
+            "t_prob": [1, 2, 5, 3, 7],
+            "t_pes": [1, 3, 7, 4, 10],
+            "Predecesores": ["", "A", "B", "B", "C,D"],
         }
     else:
         datos_basicos = {
-            "Tarea": ["A", "B", "C", "D", "E", "F"],
-            "Duración": [2, 3, 3, 4, 3, 5],
-            "Predecesores": ["", "A", "A", "B", "C", "D,E"],
+            "Tarea": ["A", "B", "C", "D", "E"],
+            "Duración": [1, 2, 5, 3, 7],
+            "Predecesores": ["", "A", "B", "B", "C,D"],
         }
     df_basico = pd.DataFrame(datos_basicos)
 
