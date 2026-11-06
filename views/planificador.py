@@ -246,7 +246,115 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             if desviacion > 0 else 0.0
         )
         st.info(f"Probabilidad de éxito: **{probabilidad:.2f}%**")
-    st.dataframe(res["tabla"], width="stretch")
+    # Tabla de holgura y camino critico con signos "?" explicativos
+    st.markdown("**Tabla de Resultados (Holgura y Camino Crítico)**")
+    st.dataframe(
+        res["tabla"].style.format({
+            "d_ij": "{:.2f}",
+            "ES": "{:.2f}",
+            "EF": "{:.2f}",
+            "LS": "{:.2f}",
+            "LF": "{:.2f}",
+            "Holgura": "{:.2f}",
+        }),
+        width="stretch",
+        column_config={
+            "Actividad": st.column_config.TextColumn("Actividad", help="Nombre de la actividad."),
+            "d_ij": st.column_config.NumberColumn("d_ij (duración)", help="Duración de la actividad (días). Fórmula: t_e = (t_o + 4·t_m + t_p)/6 en PERT."),
+            "ES": st.column_config.NumberColumn("ES (Early Start)", help="Tiempo de inicio temprano. Fórmula: ES = max(EF de predecesores)."),
+            "EF": st.column_config.NumberColumn("EF (Early Finish)", help="Tiempo de fin temprano. Fórmula: EF = ES + d_ij."),
+            "LS": st.column_config.NumberColumn("LS (Late Start)", help="Tiempo de inicio tardío. Fórmula: LS = LF - d_ij."),
+            "LF": st.column_config.NumberColumn("LF (Late Finish)", help="Tiempo de fin tardío. Fórmula: LF = min(LS de sucesores)."),
+            "Holgura": st.column_config.NumberColumn("H (Holgura)", help="Holgura total. Fórmula: H = LF - EF = LS - ES. Si H=0, la actividad es crítica."),
+            "CC": st.column_config.TextColumn("CC (Camino Crítico)", help="Marca si la actividad pertenece al camino crítico (holgura = 0)."),
+        },
+        hide_index=True,
+    )
+
+    # --- Tabla de tiempos esperados y varianzas PERT (solo modo PERT) ---
+    if res.get("usar_pert"):
+        st.markdown("---")
+        st.markdown("**Tiempos Esperados y Varianzas PERT**")
+        filas_pert = []
+        for _, row in res["tabla"].iterrows():
+            act = row["Actividad"]
+            filas_pert.append({
+                "Actividad": act,
+                "t_o (optimista)": None,
+                "t_m (probable)": None,
+                "t_p (pesimista)": None,
+                "t_e (esperado)": row["d_ij"],
+                "σ² (varianza)": None,
+            })
+        # Reconstruir desde el grafo si es posible
+        grafo = res["grafo"]
+        for n in grafo.nodes():
+            if hasattr(grafo.nodes[n], "get") and "t_opt" in grafo.nodes[n]:
+                for f in filas_pert:
+                    if f["Actividad"] == n:
+                        f["t_o (optimista)"] = grafo.nodes[n]["t_opt"]
+                        f["t_m (probable)"] = grafo.nodes[n]["t_prob"]
+                        f["t_p (pesimista)"] = grafo.nodes[n]["t_pes"]
+                        f["σ² (varianza)"] = round(grafo.nodes[n]["var"], 3)
+        df_pert = pd.DataFrame(filas_pert)
+        st.dataframe(
+            df_pert.style.format({
+                "t_o (optimista)": "{:.2f}",
+                "t_m (probable)": "{:.2f}",
+                "t_p (pesimista)": "{:.2f}",
+                "t_e (esperado)": "{:.2f}",
+                "σ² (varianza)": "{:.3f}",
+            }, na_rep="-"),
+            width="stretch",
+            column_config={
+                "Actividad": st.column_config.TextColumn("Actividad", help="Nombre de la actividad."),
+                "t_o (optimista)": st.column_config.NumberColumn("t_o", help="Tiempo optimista (mejor caso)."),
+                "t_m (probable)": st.column_config.NumberColumn("t_m", help="Tiempo más probable (caso normal)."),
+                "t_p (pesimista)": st.column_config.NumberColumn("t_p", help="Tiempo pesimista (peor caso)."),
+                "t_e (esperado)": st.column_config.NumberColumn("t_e", help="Tiempo esperado. Fórmula: t_e = (t_o + 4·t_m + t_p) / 6."),
+                "σ² (varianza)": st.column_config.NumberColumn("σ²", help="Varianza. Fórmula: σ² = [(t_p − t_o) / 6]²."),
+            },
+            hide_index=True,
+        )
+
+    # --- Calendario de ejecucion ---
+    st.markdown("---")
+    st.markdown("**Calendario de Ejecución**")
+    filas_cal = []
+    for _, row in res["tabla"].iterrows():
+        act = row["Actividad"]
+        es = row["ES"]
+        ef = row["EF"]
+        ls = row["LS"]
+        lf = row["LF"]
+        filas_cal.append({
+            "Actividad": act,
+            "ES (Inicio temprano)": es,
+            "EF (Fin temprano)": ef,
+            "LS (Inicio tardío)": ls,
+            "LF (Fin tardío)": lf,
+            "Holgura": row["Holgura"],
+        })
+    df_cal = pd.DataFrame(filas_cal)
+    st.dataframe(
+        df_cal.style.format({
+            "ES (Inicio temprano)": "{:.2f}",
+            "EF (Fin temprano)": "{:.2f}",
+            "LS (Inicio tardío)": "{:.2f}",
+            "LF (Fin tardío)": "{:.2f}",
+            "Holgura": "{:.2f}",
+        }),
+        width="stretch",
+        column_config={
+            "Actividad": st.column_config.TextColumn("Actividad", help="Nombre de la actividad."),
+            "ES (Inicio temprano)": st.column_config.NumberColumn("ES", help="Early Start: inicio más temprano posible."),
+            "EF (Fin temprano)": st.column_config.NumberColumn("EF", help="Early Finish: fin más temprano posible."),
+            "LS (Inicio tardío)": st.column_config.NumberColumn("LS", help="Late Start: inicio más tardío sin retrasar el proyecto."),
+            "LF (Fin tardío)": st.column_config.NumberColumn("LF", help="Late Finish: fin más tardío sin retrasar el proyecto."),
+            "Holgura": st.column_config.NumberColumn("H", help="Holgura total = LF - EF."),
+        },
+        hide_index=True,
+    )
 
     # --- Diagrama PERT AOA (Activity on Arrow) para modo basico (solo duracion fija) ---
     if not res.get("usar_pert", False):
