@@ -184,16 +184,8 @@ def _aon_to_aoa(grafo_aon, duraciones):
                 if fi != fj:
                     grafo_aoa.add_edge(fi, fj, act=f"F_{act}", te=0, dur=0, ficticia=True)
 
-    # Añadir nodo final unificado si hay multiples finales
-    # Calcular finales ANTES de añadir ficticias (los ficticios son nodos auxiliares)
-    finales = [n for n in grafo_aon.nodes() if not list(grafo_aon.successors(n)) and not str(n).startswith("_fict_")]
-    if len(finales) > 1:
-        nodo_final = siguiente_suceso
-        nodos_aoa.add(nodo_final)
-        for f in finales:
-            fi = suceso_fin.get(f)
-            if fi is not None and fi != nodo_final:
-                grafo_aoa.add_edge(fi, nodo_final, act="F", te=0, dur=0, ficticia=True)
+    # NO se añade nodo final unificado: cada actividad final termina en su propio suceso.
+    # Esto evita ficticias confusas al final del diagrama.
 
     # Renumerar nodos para que sean consecutivos (1, 2, 3, ...)
     mapping = {n: i+1 for i, n in enumerate(sorted(nodos_aoa))}
