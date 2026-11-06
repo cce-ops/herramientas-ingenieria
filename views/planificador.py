@@ -397,27 +397,26 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             hide_index=True,
         )
 
-    # --- 5. Calendario de Ejecución ---
+    # --- 5. Calendario de Ejecución (solo fechas, sin duplicar ES/EF/LS/LF) ---
     st.markdown("**Calendario de Ejecución**")
     filas_cal = []
     for _, row in res["tabla"].iterrows():
         act = row["Actividad"]
-        es = row["ES"] if "ES" in row else row["ti"]
-        ef = row["EF"] if "EF" in row else row["tj"]
-        ls = row["LS"] if "LS" in row else row["t*i"]
-        lf = row["LF"] if "LF" in row else row["t*j"]
-        # Calcular fechas
-        es_date = (inicio + _DIAS_LABORABLES * int(es)).strftime("%a %d/%m")
-        ef_date = (inicio + _DIAS_LABORABLES * int(ef)).strftime("%a %d/%m")
-        ls_date = (inicio + _DIAS_LABORABLES * int(ls)).strftime("%a %d/%m")
-        lf_date = (inicio + _DIAS_LABORABLES * int(lf)).strftime("%a %d/%m")
+        ti = row["ti"]
+        tj = row["tj"]
+        ti_star = row["t*i"]
+        tj_star = row["t*j"]
+        es_date = (inicio + _DIAS_LABORABLES * int(ti)).strftime("%a %d/%m")
+        ef_date = (inicio + _DIAS_LABORABLES * int(tj)).strftime("%a %d/%m")
+        ls_date = (inicio + _DIAS_LABORABLES * int(ti_star)).strftime("%a %d/%m")
+        lf_date = (inicio + _DIAS_LABORABLES * int(tj_star)).strftime("%a %d/%m")
         filas_cal.append({
             "Actividad": act,
-            "ES": f"{es:.0f} ({es_date})",
-            "EF": f"{ef:.0f} ({ef_date})",
-            "LS": f"{ls:.0f} ({ls_date})",
-            "LF": f"{lf:.0f} ({lf_date})",
-            "H": row["Holgura"] if "Holgura" in row else row["HTij"],
+            "ES (fecha)": es_date,
+            "EF (fecha)": ef_date,
+            "LS (fecha)": ls_date,
+            "LF (fecha)": lf_date,
+            "H": row["HTij"],
         })
     df_cal = pd.DataFrame(filas_cal)
     st.dataframe(
@@ -425,11 +424,11 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         width="stretch",
         column_config={
             "Actividad": st.column_config.TextColumn("Actividad", help="Nombre de la actividad."),
-            "ES": st.column_config.TextColumn("ES (Inicio temprano)", help="Early Start + fecha."),
-            "EF": st.column_config.TextColumn("EF (Fin temprano)", help="Early Finish + fecha."),
-            "LS": st.column_config.TextColumn("LS (Inicio tardío)", help="Late Start + fecha."),
-            "LF": st.column_config.TextColumn("LF (Fin tardío)", help="Late Finish + fecha."),
-            "H": st.column_config.NumberColumn("H (Holgura)", help="Holgura total."),
+            "ES (fecha)": st.column_config.TextColumn("ES (Inicio temprano)", help="Early Start + fecha."),
+            "EF (fecha)": st.column_config.TextColumn("EF (Fin temprano)", help="Early Finish + fecha."),
+            "LS (fecha)": st.column_config.TextColumn("LS (Inicio tardío)", help="Late Start + fecha."),
+            "LF (fecha)": st.column_config.TextColumn("LF (Fin tardío)", help="Late Finish + fecha."),
+            "H": st.column_config.NumberColumn("H (Holgura)", help="Holgura total = LF - EF."),
         },
         hide_index=True,
     )
