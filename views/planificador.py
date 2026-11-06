@@ -126,7 +126,7 @@ def _calcular_basico(df: pd.DataFrame, fecha_inicio, usar_pert: bool = False):
     # Añadir t_i* (LAST) y t_j (EARLY) como en el modo avanzado
     es_map = {n: es[n] for n in orden}
     ls_map = {n: ls[n] for n in orden}
-    matriz_z.loc["t_i*"] = [f"{ls_map.get(n, 0):.2f}" for n in orden] + [""]
+    matriz_z.loc["t_i*"] = [f"{ls_map.get(n, 0):.2f}" for n in orden]
     matriz_z["t_j"] = [f"{es_map.get(n, 0):.2f}" for n in orden] + [""]
 
     return {
