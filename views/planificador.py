@@ -191,8 +191,8 @@ def _aon_to_aoa(grafo_aon, duraciones):
         nodo_final = siguiente_suceso
         nodos_aoa.add(nodo_final)
         for f in finales:
-            fi = suceso_fin[f]
-            if fi != nodo_final:
+            fi = suceso_fin.get(f)
+            if fi is not None and fi != nodo_final:
                 grafo_aoa.add_edge(fi, nodo_final, act="F", te=0, dur=0, ficticia=True)
 
     # Renumerar nodos para que sean consecutivos (1, 2, 3, ...)
