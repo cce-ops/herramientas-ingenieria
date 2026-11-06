@@ -157,7 +157,7 @@ def _aon_to_aoa(grafo_aon, duraciones):
                 siguiente_suceso += 1
                 # Añadir ficticias desde cada predecesor
                 for p in preds:
-                    grafo_aon.add_edge(p, f"_fict_{act}_{p}", weight=0)
+                    grafo_aon.add_edge(p, f"F_{act}", weight=0)
         # Suceso de fin: crear nuevo suceso
         suceso_fin[act] = siguiente_suceso
         siguiente_suceso += 1
@@ -182,7 +182,7 @@ def _aon_to_aoa(grafo_aon, duraciones):
                 fi = suceso_fin[p]
                 fj = suceso_inicio[act]
                 if fi != fj:
-                    grafo_aoa.add_edge(fi, fj, act=f"_fict_{act}_{p}", te=0, dur=0, ficticia=True)
+                    grafo_aoa.add_edge(fi, fj, act=f"F_{act}", te=0, dur=0, ficticia=True)
 
     # Añadir nodo final unificado si hay multiples finales
     # Calcular finales ANTES de añadir ficticias (los ficticios son nodos auxiliares)
@@ -193,7 +193,7 @@ def _aon_to_aoa(grafo_aon, duraciones):
         for f in finales:
             fi = suceso_fin[f]
             if fi != nodo_final:
-                grafo_aoa.add_edge(fi, nodo_final, act=f"_fict_fin_{f}", te=0, dur=0, ficticia=True)
+                grafo_aoa.add_edge(fi, nodo_final, act="F", te=0, dur=0, ficticia=True)
 
     # Renumerar nodos para que sean consecutivos (1, 2, 3, ...)
     mapping = {n: i+1 for i, n in enumerate(sorted(nodos_aoa))}
@@ -298,54 +298,6 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         )
         fig_gantt.update_yaxes(autorange="reversed")
         st.plotly_chart(fig_gantt, width="stretch")
-
-    with col_grafo:
-        fig, ax = plt.subplots(figsize=(8, 5))
-        grafo = res["grafo"]
-        # Layout por niveles topologicos: X = nivel, Y = separacion para evitar solapamiento
-        niveles = {}
-        for n in grafo.nodes():
-            pred = list(grafo.predecessors(n))
-            nivel = 0 if not pred else max(niveles.get(p, 0) for p in pred) + 1
-            niveles[n] = nivel
-        # Agrupar por nivel para separar verticalmente
-        por_nivel = {}
-        for n, nv in niveles.items():
-            por_nivel.setdefault(nv, []).append(n)
-        posiciones = {}
-        for nv, nodos in por_nivel.items():
-            for idx, n in enumerate(nodos):
-                posiciones[n] = (nv * 2.0, -idx * 1.5)
-        colores = [
-            "#e74c3c" if n in res["criticos"] else "#3498db"
-            for n in grafo.nodes()
-        ]
-        nx.draw_networkx_nodes(
-            grafo, posiciones, node_size=2000, node_color=colores,
-            edgecolors="black", ax=ax,
-        )
-        nx.draw_networkx_labels(
-            grafo, posiciones, font_size=10, font_weight="bold", ax=ax,
-        )
-        colores_arista = [
-            "red" if (u in res["criticos"] and v in res["criticos"]) else "gray"
-            for u, v in grafo.edges()
-        ]
-        nx.draw_networkx_edges(
-            grafo, posiciones, edge_color=colores_arista, arrows=True, ax=ax,
-        )
-        etiquetas = {}
-        for u, v in grafo.edges():
-            dur = grafo[u][v].get("dur", "")
-            if dur == "":
-                dur = grafo.nodes[u].get("dur", "")
-            etiquetas[(u, v)] = f"{dur}"
-        nx.draw_networkx_edge_labels(
-            grafo, posiciones, edge_labels=etiquetas, font_color="blue", ax=ax,
-        )
-        ax.axis("off")
-        mostrar_figura(fig)
-
 
 def _modo_basico() -> None:
     st.markdown("### 1. Datos de Entrada (Modo Básico)")
