@@ -603,6 +603,12 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         "La duración del proyecto se aproxima mediante una distribución normal "
         "asociada al camino crítico esperado."
     )
+    if not usar_pert:
+        st.info(
+            "En modo **Duración fija** no hay incertidumbre: σ² = 0. "
+            "Cambia a **PERT (t_opt / t_prob / t_pes)** para obtener la tabla "
+            "de probabilidad del enunciado."
+        )
     var = res["varianza"]
     mu = dur_total
     sigma = np.sqrt(var) if var > 0 else 0.0
