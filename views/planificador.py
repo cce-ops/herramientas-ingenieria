@@ -1423,4 +1423,4 @@ def render(_ctx: dict) -> None:
             _modo_avanzado()
     if tab_evm.open:
         with tab_evm:
-            _modo_evm()
+            _modo_evm()# Updated vie 06 nov 2026 19:20:39 CET
