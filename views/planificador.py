@@ -735,12 +735,7 @@ def _modo_basico() -> None:
         ),
     )
     usar_pert = modo_pert.startswith("PERT")
-    if usar_pert:
-        st.caption(
-            "Modo PERT: los valores por defecto son los del ejercicio de los "
-            "apuntes (A: 1/1/1, B: 1/2/3, C: 3/5/7, D: 2/3/4, E: 4/7/10)."
-        )
-    else:
+    if not usar_pert:
         st.caption(
             "Modo Duración fija: solo se introduce una duración por actividad. "
             "No hay tiempos optimista/pesimista, por lo que σ² = 0. "
