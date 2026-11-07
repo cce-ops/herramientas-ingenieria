@@ -618,7 +618,40 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         color="Crítica",
         color_discrete_map={"Sí": "#e74c3c", "No": "#3498db"},
     )
-    fig_gantt.update_yaxes(autorange="reversed")
+    # Barra rayada de holgura: del fin temprano al fin tardío.
+    holgura_gantt = []
+    for _, fila in res["gantt"].iterrows():
+        nombre = fila["Tarea"]
+        if res["lf"][nombre] - res["ef"][nombre] > 1e-9:
+            holgura_gantt.append(
+                {
+                    "Tarea": nombre,
+                    "Inicio": inicio
+                    + _DIAS_LABORABLES * int(round(res["ef"][nombre])),
+                    "Fin": inicio
+                    + _DIAS_LABORABLES * int(round(res["lf"][nombre])),
+                }
+            )
+    if holgura_gantt:
+        fig_holgura = px.timeline(
+            pd.DataFrame(holgura_gantt),
+            x_start="Inicio",
+            x_end="Fin",
+            y="Tarea",
+        )
+        for traza in fig_holgura.data:
+            traza.marker.color = "rgba(52, 152, 219, 0.18)"
+            traza.marker.pattern = dict(shape="/", fgcolor="#2980b9")
+            traza.name = "Holgura"
+            traza.showlegend = True
+            traza.legendgroup = "Holgura"
+            fig_gantt.add_trace(traza)
+        fig_gantt.update_layout(barmode="overlay")
+    fig_gantt.update_yaxes(
+        categoryorder="array",
+        categoryarray=list(res["orden"]),
+        autorange="reversed",
+    )
     st.plotly_chart(fig_gantt, width="stretch")
 
     # --- 7. Probabilidad de Cumplimiento ---
