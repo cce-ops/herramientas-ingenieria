@@ -636,11 +636,12 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     var = res["varianza"]
     mu = dur_total
     sigma = np.sqrt(var) if var > 0 else 0.0
+    sigma_tabla = round(sigma, 2) if sigma > 0 else 0.0
     st.markdown(
         f"**Camino crítico:** {camino} &nbsp;&nbsp;|&nbsp;&nbsp; "
         f"**μ = {_fmt_num(mu)} días** &nbsp;&nbsp;|&nbsp;&nbsp; "
         f"**σ² = {var:.3f}** &nbsp;&nbsp;|&nbsp;&nbsp; "
-        f"**σ = {sigma:.3f} días**"
+        f"**σ ≈ {sigma_tabla:.2f} días**"
     )
     st.markdown("Para una fecha objetivo T*: t = (T* − μ) / σ ; P(cumplir) = Φ(t)")
 
@@ -677,8 +678,8 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     base = int(round(mu))
     for plazo in range(base - 1, base + 5):
         fecha = inicio + _DIAS_LABORABLES * plazo
-        if sigma > 0:
-            t_valor = (plazo - mu) / sigma
+        if sigma_tabla > 0:
+            t_valor = (plazo - mu) / sigma_tabla
             probabilidad = stats.norm.cdf(t_valor)
         else:
             t_valor = 0.0
@@ -696,7 +697,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     st.dataframe(pd.DataFrame(filas_plazo), width="stretch", hide_index=True)
 
     prob_dos_dias = (
-        stats.norm.cdf(2 / sigma) * 100 if sigma > 0 else 100.0
+        stats.norm.cdf(2 / sigma_tabla) * 100 if sigma_tabla > 0 else 100.0
     )
     st.markdown(
         "**Lectura:** terminar en la fecha esperada tiene una probabilidad del "
@@ -710,8 +711,10 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             value=float(base) + 1,
             key="plan__plazo_objetivo_basico",
         )
-        if sigma > 0:
-            probabilidad = stats.norm.cdf((plazo_objetivo - mu) / sigma) * 100
+        if sigma_tabla > 0:
+            probabilidad = (
+                stats.norm.cdf((plazo_objetivo - mu) / sigma_tabla) * 100
+            )
         else:
             probabilidad = 100.0 if plazo_objetivo >= mu else 0.0
         st.info(f"Probabilidad de éxito: **{probabilidad:.2f}%**")
@@ -723,11 +726,26 @@ def _modo_basico() -> None:
     modo_pert = st.selectbox(
         "Tipo de duración:",
         ["Duración fija (días)", "PERT (t_opt / t_prob / t_pes)"],
-        index=0,
-        key="plan__modo_pert_basico",
-        help="PERT usa tiempos optimista (to), más probable (tm) y pesimista (tp) para calcular t_e = (to + 4tm + tp)/6.",
+        index=1,
+        key="plan__modo_pert_basico_v2",
+        help=(
+            "PERT usa tiempos optimista (to), más probable (tm) y pesimista (tp) "
+            "para calcular t_e = (to + 4·tm + tp)/6 y la varianza. "
+            "Con Duración fija no hay incertidumbre (σ² = 0)."
+        ),
     )
     usar_pert = modo_pert.startswith("PERT")
+    if usar_pert:
+        st.caption(
+            "Modo PERT: los valores por defecto son los del ejercicio de los "
+            "apuntes (A: 1/1/1, B: 1/2/3, C: 3/5/7, D: 2/3/4, E: 4/7/10)."
+        )
+    else:
+        st.caption(
+            "Modo Duración fija: solo se introduce una duración por actividad. "
+            "No hay tiempos optimista/pesimista, por lo que σ² = 0. "
+            "Para las tablas PERT de los apuntes, elige el modo PERT."
+        )
 
     if usar_pert:
         datos_basicos = {
@@ -750,7 +768,7 @@ def _modo_basico() -> None:
             df_basico,
             num_rows="dynamic",
             width="stretch",
-            key="plan__tabla_basica_pert",
+            key="plan__tabla_basica_pert_v2",
             column_config={
                 "Tarea": st.column_config.TextColumn("Tarea"),
                 "t_opt": st.column_config.NumberColumn("t_opt (optimista)", min_value=0.0, step=0.5),
@@ -761,13 +779,17 @@ def _modo_basico() -> None:
         )
     else:
         df_editado = st.data_editor(
-            df_basico, num_rows="dynamic", width="stretch", key="plan__tabla_basica"
+            df_basico, num_rows="dynamic", width="stretch", key="plan__tabla_basica_v2"
         )
 
     fecha_inicio = st.date_input(
         "Selecciona la fecha de inicio del proyecto:",
-        date.today(),
-        key="plan__fecha_basica",
+        date(2026, 7, 6),
+        key="plan__fecha_basica_v2",
+    )
+    st.caption(
+        "El ejercicio de los apuntes comienza el lunes 06/07/2026. "
+        "Cambia la fecha si tu proyecto empieza otro día."
     )
 
     if boton_calcular(
