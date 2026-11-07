@@ -249,91 +249,122 @@ def _calcular_basico(df: pd.DataFrame, fecha_inicio, usar_pert: bool = False):
 
 def _aon_to_aoa(grafo_aon, duraciones):
     """Convierte un grafo AON (actividades como nodos) a AOA (PERT: actividades como aristas).
-    Devuelve (grafo_aoa, mapping) donde grafo_aoa es un DiGraph con nodos=sucesos y aristas=actividades.
-    Los numeros de sucesos reflejan el orden temporal (EARLY time).
-    """
-    # Topological sort
-    orden = list(nx.topological_sort(grafo_aon))
 
-    # Calcular EARLY times para cada actividad (usando duracion)
+    - Todas las actividades sin predecesores parten del mismo suceso inicial.
+    - Cada actividad termina en un suceso propio.
+    - Si una actividad tiene varios predecesores, se enlaza al que termina mas
+      tarde y se anaden actividades ficticias desde los demas.
+    - Si hay varias actividades finales, se anaden ficticias hasta el suceso
+      final que marca la duracion del proyecto.
+
+    Devuelve (grafo_aoa, mapping), donde grafo_aoa es un DiGraph con
+    nodos = sucesos y aristas = actividades.
+    """
+    orden = list(nx.topological_sort(grafo_aon))
+    pos_orden = {act: i for i, act in enumerate(orden)}
+
     early = {}
     for act in orden:
         preds = list(grafo_aon.predecessors(act))
-        if not preds:
-            early[act] = 0.0
-        else:
-            early[act] = max(early[p] + duraciones.get(p, 0) for p in preds)
+        early[act] = max(
+            (early[p] + duraciones.get(p, 0) for p in preds), default=0.0
+        )
 
-    # Ordenar actividades por EARLY time para asignar numeros de sucesos
-    # (mayor EARLY primero para que el dominante obtenga numero mayor)
-    orden_por_early = sorted(orden, key=lambda a: (early[a], -duraciones.get(a, 0)))
+    # Ordenar por comienzo temprano y, a igualdad, por duracion ascendente.
+    # Asi los sucesos quedan numerados como en los apuntes: D antes que C
+    # cuando ambas empiezan en el mismo instante, o C antes que D en el otro.
+    actividades = sorted(
+        orden,
+        key=lambda a: (early[a], duraciones.get(a, 0), pos_orden[a]),
+    )
 
-    suceso_inicio = {}
-    suceso_fin = {}
-    siguiente_suceso = 1
-
-    # Primera pasada: asignar sucesos de inicio Y fin (en orden de EARLY, menor duración primero)
-    for act in sorted(orden, key=lambda a: (early[a], duraciones.get(a, 0))):
-        preds = list(grafo_aon.predecessors(act))
-        if not preds:
-            suceso_inicio[act] = siguiente_suceso
-            siguiente_suceso += 1
-            suceso_fin[act] = siguiente_suceso
-            siguiente_suceso += 1
-        elif len(preds) == 1:
-            suceso_inicio[act] = suceso_fin[preds[0]]
-            suceso_fin[act] = siguiente_suceso
-            siguiente_suceso += 1
-        else:
-            # Multiples predecesores: el dominante (mayor duracion) se conecta directamente.
-            dominante = max(preds, key=lambda p: duraciones.get(p, 0))
-            suceso_inicio[act] = suceso_fin[dominante]
-            # Crear ficticias para los no-dominantes
-            for p in preds:
-                if p != dominante:
-                    # Crear suceso intermedio
-                    suceso_intermedio = siguiente_suceso
-                    siguiente_suceso += 1
-                    # La ficticia ira de suceso_fin[p] a suceso_intermedio, y de suceso_intermedio a suceso_inicio[act]
-                    # Pero para simplificar, añadimos una sola ficticia de suceso_fin[p] a suceso_inicio[act]
-                    pass  # se añadira en la construccion del grafo AOA
-
-    # Segunda pasada: reasignar sucesos de fin para que reflejen la duracion.
-    # Procesar en orden de (EARLY, -duración) para que el dominante obtenga numero mayor.
-    for act in sorted(orden, key=lambda a: (early[a], -duraciones.get(a, 0))):
-        if act not in suceso_fin:
-            suceso_fin[act] = siguiente_suceso
-            siguiente_suceso += 1
-        else:
-            # Si ya tiene suceso_fin, verificar que sea mayor que el suceso de inicio
-            if suceso_fin[act] <= suceso_inicio[act]:
-                suceso_fin[act] = suceso_inicio[act] + 1
-                siguiente_suceso = max(siguiente_suceso, suceso_fin[act] + 1)
-
-    # Construir grafo AOA
     grafo_aoa = nx.DiGraph()
-    nodos_aoa = set()
-    for act in orden:
-        i = suceso_inicio[act]
-        j = suceso_fin[act]
-        nodos_aoa.add(i)
-        nodos_aoa.add(j)
-        grafo_aoa.add_edge(i, j, act=act, te=duraciones[act], dur=duraciones[act])
+    suceso_inicial = 1
+    siguiente_suceso = 2
+    fin_actividad = {}
+
+    for act in actividades:
         preds = list(grafo_aon.predecessors(act))
+        if not preds:
+            i = suceso_inicial
+        elif len(preds) == 1:
+            i = fin_actividad[preds[0]]
+        else:
+            # Se elige el predecesor cuyo suceso final tiene mayor numeracion;
+            # asi las ficticias nunca van hacia atras y el grafo queda ordenado.
+            dominante = max(
+                preds,
+                key=lambda p: (
+                    fin_actividad[p],
+                    early[p] + duraciones.get(p, 0),
+                    duraciones.get(p, 0),
+                ),
+            )
+            i = fin_actividad[dominante]
+
+        j = siguiente_suceso
+        siguiente_suceso += 1
+        fin_actividad[act] = j
+        grafo_aoa.add_edge(
+            i, j, act=act, te=duraciones[act], dur=duraciones[act]
+        )
+
         if len(preds) > 1:
-            dominante = max(preds, key=lambda p: duraciones.get(p, 0))
             for p in preds:
-                if p != dominante:
-                    fi = suceso_fin[p]
-                    fj = suceso_inicio[act]
-                    if fi != fj:
-                        grafo_aoa.add_edge(fi, fj, act=f"Fict_{p}", te=0, dur=0, ficticia=True)
+                if p == dominante:
+                    continue
+                fi = fin_actividad[p]
+                if fi != i and not grafo_aoa.has_edge(fi, i):
+                    grafo_aoa.add_edge(
+                        fi, i, act=f"Fict_{p}", te=0, dur=0, ficticia=True
+                    )
 
-    # Renumerar nodos para que sean consecutivos (1, 2, 3, ...)
-    mapping = {n: i+1 for i, n in enumerate(sorted(nodos_aoa))}
-    grafo_aoa = nx.relabel_nodes(grafo_aoa, mapping)
+    # Actividades sin sucesoras: si hay varias, unirlas con ficticias al
+    # suceso final (el que termina mas tarde).
+    terminales = [a for a in orden if grafo_aon.out_degree(a) == 0]
+    if len(terminales) > 1:
+        final = max(
+            terminales,
+            key=lambda a: (
+                early[a] + duraciones.get(a, 0),
+                fin_actividad[a],
+            ),
+        )
+        nodo_final = fin_actividad[final]
 
-    return grafo_aoa, mapping
+        # Si el suceso final no es el de mayor numeracion, crear uno nuevo
+        # para mantener el grafo ordenado topologicamente.
+        if any(fin_actividad[a] > nodo_final for a in terminales):
+            nodo_final = siguiente_suceso
+            siguiente_suceso += 1
+            grafo_aoa.add_node(nodo_final)
+            for a in terminales:
+                fi = fin_actividad[a]
+                if fi != nodo_final:
+                    grafo_aoa.add_edge(
+                        fi,
+                        nodo_final,
+                        act=f"Fict_{a}",
+                        te=0,
+                        dur=0,
+                        ficticia=True,
+                    )
+        else:
+            for a in terminales:
+                if a == final:
+                    continue
+                fi = fin_actividad[a]
+                if fi != nodo_final:
+                    grafo_aoa.add_edge(
+                        fi,
+                        nodo_final,
+                        act=f"Fict_{a}",
+                        te=0,
+                        dur=0,
+                        ficticia=True,
+                    )
+
+    return grafo_aoa, {n: n for n in grafo_aoa.nodes()}
 
 
 
@@ -388,6 +419,25 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             and abs(t_last[v] - t_early[v]) < 1e-5
         )
 
+    def _rad_edge(u, v):
+        """Curva una arista si pasa demasiado cerca de otro suceso."""
+        p0 = np.array(pos_aoa[u], dtype=float)
+        p1 = np.array(pos_aoa[v], dtype=float)
+        d = p1 - p0
+        denom = float(np.dot(d, d))
+        if denom == 0:
+            return 0.03
+        for w, pw in pos_aoa.items():
+            if w in (u, v):
+                continue
+            p = np.array(pw, dtype=float)
+            t = float(np.dot(p - p0, d) / denom)
+            if 0.1 < t < 0.9:
+                dist = float(np.linalg.norm(p - (p0 + t * d)))
+                if dist < 0.9:
+                    return 0.30
+        return 0.03
+
     colores_nodo = [
         "#e74c3c" if any(_es_critica_aoa(u, v) for u, v in grafo_aoa.edges() if u == n or v == n) else "#3498db"
         for n in grafo_aoa.nodes()
@@ -413,17 +463,19 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             width=3 if critica else 1.5,
             arrows=True, arrowstyle="->", arrowsize=15, ax=ax_pert,
             style="dashed" if ficticia else "solid",
-            connectionstyle="arc3,rad=0.05",
+            connectionstyle=f"arc3,rad={_rad_edge(u, v)}",
         )
     etiquetas = {}
     for u, v in grafo_aoa.edges():
         act = grafo_aoa[u][v].get("act", "")
         dur = grafo_aoa[u][v].get("te", 0)
         etiquetas[(u, v)] = f"{act}\n{_fmt_num(dur)}"
-    nx.draw_networkx_edge_labels(
-        grafo_aoa, pos_aoa, edge_labels=etiquetas, font_color="blue",
-        ax=ax_pert, font_size=8,
-    )
+    for (u, v), etiqueta in etiquetas.items():
+        nx.draw_networkx_edge_labels(
+            grafo_aoa, pos_aoa, edge_labels={(u, v): etiqueta},
+            font_color="blue", ax=ax_pert, font_size=8,
+            connectionstyle=f"arc3,rad={_rad_edge(u, v)}",
+        )
     ax_pert.axis("off")
     mostrar_figura(fig_pert)
 
@@ -711,11 +763,14 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     base = int(round(mu))
     for plazo in range(base - 1, base + 5):
         fecha = inicio + _DIAS_LABORABLES * plazo
-        if sigma_tabla > 0:
-            t_valor = (plazo - mu) / sigma_tabla
-            probabilidad = stats.norm.cdf(t_valor)
+        if sigma > 0:
+            t_valor = (plazo - mu) / sigma
+            # La tabla de los apuntes muestra t con dos decimales y usa ese
+            # valor para buscar la probabilidad.
+            t_tabla = np.trunc(t_valor * 100) / 100
+            probabilidad = stats.norm.cdf(t_tabla)
         else:
-            t_valor = 0.0
+            t_tabla = 0.0
             probabilidad = 1.0 if plazo >= mu else 0.0
         filas_plazo.append(
             {
@@ -723,7 +778,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
                 "Fecha calendario": (
                     f"{_DIAS_ES[fecha.strftime('%a')]} {fecha.strftime('%d/%m')}"
                 ),
-                "t = (T* − μ) / σ": f"{t_valor:.2f}",
+                "t = (T* − μ) / σ": f"{t_tabla:.2f}",
                 "P(t < T*)": f"{probabilidad * 100:.2f} %",
             }
         )
@@ -744,10 +799,9 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             value=float(base) + 1,
             key="plan__plazo_objetivo_basico",
         )
-        if sigma_tabla > 0:
-            probabilidad = (
-                stats.norm.cdf((plazo_objetivo - mu) / sigma_tabla) * 100
-            )
+        if sigma > 0:
+            t_objetivo = np.trunc(((plazo_objetivo - mu) / sigma) * 100) / 100
+            probabilidad = stats.norm.cdf(t_objetivo) * 100
         else:
             probabilidad = 100.0 if plazo_objetivo >= mu else 0.0
         st.info(f"Probabilidad de éxito: **{probabilidad:.2f}%**")
