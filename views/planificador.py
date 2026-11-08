@@ -1737,13 +1737,19 @@ def _modo_evm_por_actividad() -> None:
     with col_diff1:
         diff_ac_pv = float(ac_total_act) - pv_total_act
         st.metric("AC − PV (€)", f"{diff_ac_pv:,.2f}")
+        if diff_ac_pv > 0:
+            gasto_txt = "Se ha gastado más de lo planificado para esta fecha"
+        elif diff_ac_pv < 0:
+            gasto_txt = "Se ha gastado menos de lo planificado para esta fecha"
+        else:
+            gasto_txt = "Se ha gastado exactamente lo planificado para esta fecha"
         st.markdown(
-            "Se ha gastado más de lo planificado para esta fecha: "
+            f"{gasto_txt}: "
             f"{float(ac_total_act):,.2f} − {pv_total_act:,.2f} = {diff_ac_pv:,.2f} €. "
-            "Esta diferencia mezcla dos efectos: el sobrecoste del trabajo realmente "
-            f"ejecutado (CV = {cv_final_act:,.2f} €) y el valor del trabajo planificado "
-            f"que aún no se ha realizado (SV = {sv_final_act:,.2f} €). Por eso no "
-            "coincide con el sobrecoste del trabajo ejecutado."
+            "Esta diferencia mezcla dos efectos: el sobrecoste/ahorro del trabajo "
+            f"realmente ejecutado (CV = {cv_final_act:,.2f} €) y el valor del trabajo "
+            f"planificado que aún no se ha realizado (SV = {sv_final_act:,.2f} €). "
+            "Por eso no coincide con el sobrecoste o ahorro del trabajo ejecutado."
         )
     with col_diff2:
         st.markdown(
@@ -1778,14 +1784,24 @@ def _modo_evm_por_actividad() -> None:
         estado = "adelantado pero con sobrecoste estimado"
     else:
         estado = "adelantado y con ahorro estimado"
+    if cpi_final_act >= 1 and spi_final_act >= 1:
+        realismo = (
+            "Con estos resultados, terminar dentro del presupuesto original es realista "
+            "si se mantiene la eficiencia actual."
+        )
+    else:
+        realismo = (
+            "Terminar dentro del presupuesto original parece poco realista sin cambios "
+            "sustanciales: habría que investigar las causas del sobrecoste, valorar "
+            "medidas correctoras, revisar la estimación del coste pendiente y, si no "
+            "es posible cumplir el presupuesto, plantear una revisión del presupuesto "
+            "o del alcance."
+        )
     st.markdown(
         f"Proyecto {estado} (SPI = {spi_final_act:.4f}, CPI = {cpi_final_act:.4f}). "
         f"Si nada cambia, el coste final estimado es {eac_act:,.2f} €, "
-        f"{eac_act - float(bac_act):,.2f} € por encima del BAC. "
-        "Terminar dentro del presupuesto original parece poco realista sin cambios "
-        "sustanciales: habría que investigar las causas del sobrecoste, valorar medidas "
-        "correctoras, revisar la estimación del coste pendiente y, si no es posible "
-        "cumplir el presupuesto, plantear una revisión del presupuesto o del alcance."
+        f"{eac_act - float(bac_act):,.2f} € {'por encima' if eac_act > float(bac_act) else 'por debajo'} del BAC. "
+        + realismo
     )
 
     st.markdown("---")
