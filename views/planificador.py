@@ -1587,9 +1587,10 @@ def _modo_evm_por_actividad() -> None:
     st.markdown("---")
     st.markdown("### ⚙️ Parámetros del Ejercicio")
     st.caption(
-        "Según el calendario de ejecución, al finalizar la primera semana laboral "
-        "(viernes 10 de julio 2026): A y B terminadas, C iniciada al 40%. "
-        "AC real reportado = 7300 € (sobrecoste importante)."
+        "Introduce el presupuesto total (BAC), el coste real acumulado (AC) y, "
+        "en la tabla, el porcentaje de presupuesto y el porcentaje real completado "
+        "de cada actividad. Los porcentajes planificados por actividad se ajustan "
+        "según el calendario de ejecución del proyecto."
     )
 
     bac_act = st.number_input("BAC (Budget at Completion) €", min_value=0.0, value=10000.0, step=500.0, format="%.0f", key="act_bac")
@@ -1682,7 +1683,7 @@ def _modo_evm_por_actividad() -> None:
         st.metric("PV (€)", f"{pv_total_act:,.2f}")
     with col_a3:
         with st.expander("❓ ¿Cómo se calcula EV?"):
-            st.markdown(f"**EV** = suma del valor real = {ev_total_act:,.0f} € (A y B completas, C según % real editado).")
+            st.markdown(f"**EV** = suma del valor real = {ev_total_act:,.0f} €.")
         st.metric("EV (€)", f"{ev_total_act:,.2f}")
     with col_a4:
         with st.expander("❓ ¿Cómo se calcula AC?"):
@@ -1703,8 +1704,8 @@ def _modo_evm_por_actividad() -> None:
     with col_b2:
         with st.expander("❓ Fórmulas CPI y SPI"):
             st.markdown(
-                f"**CPI = EV / AC = {ev_total_act:,.0f} / {ac_total_act:,.0f} = {cpi_final_act:.2f}** (baja eficiencia si <1). "
-                f"**SPI = EV / PV = {ev_total_act:,.0f} / {pv_total_act:,.0f} = {spi_final_act:.2f}** (retraso si <1)."
+                f"**CPI = EV / AC = {ev_total_act:,.0f} / {ac_total_act:,.0f} = {cpi_final_act:.4f}** (baja eficiencia si <1). "
+                f"**SPI = EV / PV = {ev_total_act:,.0f} / {pv_total_act:,.0f} = {spi_final_act:.4f}** (retraso si <1)."
             )
         st.metric("CPI", f"{cpi_final_act:.4f}")
         st.metric("SPI", f"{spi_final_act:.4f}")
@@ -1714,7 +1715,7 @@ def _modo_evm_por_actividad() -> None:
     col_d1, col_d2, col_d3, col_d4 = st.columns(4)
     with col_d1:
         with st.expander("❓ Fórmula EAC"):
-            st.markdown(f"EAC = BAC / CPI = {bac_act:,.0f} / {cpi_final_act:.2f} = {eac_act:,.0f} EUR")
+            st.markdown(f"EAC = BAC / CPI = {bac_act:,.0f} / {cpi_final_act:.4f} = {eac_act:,.2f} EUR")
         st.metric("EAC (€)", f"{eac_act:,.2f}", delta=f"{vac_act:,.0f} € vs BAC" if vac_act != 0 else None)
     with col_d2:
         with st.expander("❓ Fórmula ETC"):
@@ -1739,20 +1740,20 @@ def _modo_evm_por_actividad() -> None:
             "Se ha gastado más de lo planificado para esta fecha: "
             f"{float(ac_total_act):,.2f} − {pv_total_act:,.2f} = {diff_ac_pv:,.2f} €. "
             "Esta diferencia mezcla dos efectos: el sobrecoste del trabajo realmente "
-            "ejecutado (CV = −3400 €) y el valor del trabajo planificado que aún no "
-            "se ha realizado (SV = −1633,33 €). Por eso no coincide con el sobrecoste "
-            "del trabajo ejecutado."
+            f"ejecutado (CV = {cv_final_act:,.2f} €) y el valor del trabajo planificado "
+            f"que aún no se ha realizado (SV = {sv_final_act:,.2f} €). Por eso no "
+            "coincide con el sobrecoste del trabajo ejecutado."
         )
     with col_diff2:
         st.markdown(
             "**Repercusión sobre la fecha de finalización:**\n"
-            "- Camino crítico original: **A → B → C → E**.\n"
-            "- La actividad **D** tiene una holgura total de **2 días**.\n"
-            "- El desfase de D puede absorberse si comienza el lunes 13/07 y mantiene "
-            "su duración de 3 días: consume toda su holgura pero no retrasa la "
-            "finalización.\n"
-            "- El menor avance de C (30 % frente al 40 % previsto) sí afecta al "
-            "camino crítico y requiere seguimiento y posibles medidas.\n"
+            "- Identifica el camino crítico del proyecto (obtenido en el PERT) y la "
+            "holgura total de cada actividad no crítica.\n"
+            "- Las desviaciones en actividades críticas afectan directamente a la "
+            "fecha final; las de actividades con holgura pueden absorberse si se "
+            "mantienen dentro de su margen.\n"
+            "- El menor avance de una actividad crítica requiere seguimiento y "
+            "posibles medidas correctoras.\n"
             "- **SV** y **SPI** **no** permiten, por sí solos, determinar cuántos días "
             "se retrasará el proyecto; para eso habría que actualizar el calendario con "
             "las duraciones restantes estimadas."
@@ -1768,10 +1769,18 @@ def _modo_evm_por_actividad() -> None:
     )
 
     st.subheader("6. Conclusiones")
+    if spi_final_act < 1 and cpi_final_act < 1:
+        estado = "retrasado y con sobrecoste"
+    elif spi_final_act < 1 and cpi_final_act >= 1:
+        estado = "retrasado pero con ahorro estimado"
+    elif spi_final_act >= 1 and cpi_final_act < 1:
+        estado = "adelantado pero con sobrecoste estimado"
+    else:
+        estado = "adelantado y con ahorro estimado"
     st.markdown(
-        f"Proyecto retrasado (SPI = {spi_final_act:.2f}) y con sobrecoste muy alto "
-        f"(CPI = {cpi_final_act:.2f}). Si nada cambia, el coste final estimado es "
-        f"{eac_act:,.0f} €, unos {eac_act - float(bac_act):,.0f} € por encima del BAC. "
+        f"Proyecto {estado} (SPI = {spi_final_act:.4f}, CPI = {cpi_final_act:.4f}). "
+        f"Si nada cambia, el coste final estimado es {eac_act:,.2f} €, "
+        f"{eac_act - float(bac_act):,.2f} € por encima del BAC. "
         "Terminar dentro del presupuesto original parece poco realista sin cambios "
         "sustanciales: habría que investigar las causas del sobrecoste, valorar medidas "
         "correctoras, revisar la estimación del coste pendiente y, si no es posible "
@@ -1803,7 +1812,7 @@ def _modo_evm() -> None:
         ["Modo estándar", "Modo por actividad"],
         index=1,
         key="evm__modo_v2",
-        help="«Modo por actividad» resuelve la tarea EVM del proyecto PERT (BAC=10000, AC=7300).",
+        help="«Modo por actividad» calcula EVM por actividad con presupuestos y avances editables.",
     )
     if modo_evm == "Modo estándar":
         # El bloque estándar está en la función auxiliar
