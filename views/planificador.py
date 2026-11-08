@@ -1747,8 +1747,8 @@ def _modo_evm_por_actividad() -> None:
             f"{gasto_txt}: "
             f"{float(ac_total_act):,.2f} − {pv_total_act:,.2f} = {diff_ac_pv:,.2f} €. "
             "Esta diferencia mezcla dos efectos: el sobrecoste/ahorro del trabajo "
-            f"realmente ejecutado (CV = {cv_final_act:,.2f} €) y el valor del trabajo "
-            f"planificado que aún no se ha realizado (SV = {sv_final_act:,.2f} €). "
+            f"realmente ejecutado (CV = {cv_final_act:,.2f} €) y la desviación "
+            f"respecto al cronograma (SV = {sv_final_act:,.2f} €). "
             "Por eso no coincide con el sobrecoste o ahorro del trabajo ejecutado."
         )
     with col_diff2:
