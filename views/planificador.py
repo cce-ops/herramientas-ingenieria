@@ -1614,19 +1614,29 @@ def _modo_evm_por_actividad() -> None:
     )
 
     st.markdown("### 📅 Estado del Plan al Punto de Control")
-    col_plan_a, col_plan_b, col_plan_c = st.columns(3)
+    col_plan_a, col_plan_b, col_plan_c, col_plan_d, col_plan_e = st.columns(5)
     with col_plan_a:
         plan_a = st.number_input("A completado según plan (%)", min_value=0.0, max_value=100.0, value=100.0, step=1.0, key="evm_plan_a")
     with col_plan_b:
         plan_b = st.number_input("B completado según plan (%)", min_value=0.0, max_value=100.0, value=100.0, step=1.0, key="evm_plan_b")
     with col_plan_c:
         plan_c = st.number_input("C completado según plan (%)", min_value=0.0, max_value=100.0, value=40.0, step=1.0, key="evm_plan_c", help="Según calendario: 2/5 de C = 40% planificado")
+    with col_plan_d:
+        plan_d = st.number_input("D completado según plan (%)", min_value=0.0, max_value=100.0, value=66.6667, step=0.01, format="%.2f", key="evm_plan_d", help="Según calendario: 2/3 de D = 66,67% planificado")
+    with col_plan_e:
+        plan_e = st.number_input("E completado según plan (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key="evm_plan_e", help="E no había empezado en la fecha de control")
 
     actividades = []
     pv_total_act = 0.0
     ev_total_act = 0.0
     ac_total_act = float(ac_act)
-    plan_vals = {"A": float(plan_a), "B": float(plan_b), "C": float(plan_c), "D": 0.0, "E": 0.0}
+    plan_vals = {
+        "A": float(plan_a),
+        "B": float(plan_b),
+        "C": float(plan_c),
+        "D": float(plan_d),
+        "E": float(plan_e),
+    }
 
     for _, row in df_editado_act.iterrows():
         act = str(row["Actividad"])
@@ -1665,7 +1675,10 @@ def _modo_evm_por_actividad() -> None:
         st.metric("BAC (€)", f"{float(bac_act):,.2f}")
     with col_a2:
         with st.expander("❓ ¿Cómo se calcula PV?"):
-            st.markdown(f"**PV** = suma según calendario (A={plan_a}%, B={plan_b}%, C={plan_c}%): {pv_total_act:,.0f} €.")
+            st.markdown(
+                f"**PV** = suma según calendario (A={plan_a}%, B={plan_b}%, "
+                f"C={plan_c}%, D={plan_d}%, E={plan_e}%): {pv_total_act:,.0f} €."
+            )
         st.metric("PV (€)", f"{pv_total_act:,.2f}")
     with col_a3:
         with st.expander("❓ ¿Cómo se calcula EV?"):
@@ -1693,8 +1706,8 @@ def _modo_evm_por_actividad() -> None:
                 f"**CPI = EV / AC = {ev_total_act:,.0f} / {ac_total_act:,.0f} = {cpi_final_act:.2f}** (baja eficiencia si <1). "
                 f"**SPI = EV / PV = {ev_total_act:,.0f} / {pv_total_act:,.0f} = {spi_final_act:.2f}** (retraso si <1)."
             )
-        st.metric("CPI", f"{cpi_final_act:.2f}")
-        st.metric("SPI", f"{spi_final_act:.2f}")
+        st.metric("CPI", f"{cpi_final_act:.4f}")
+        st.metric("SPI", f"{spi_final_act:.4f}")
 
     st.markdown("---")
     st.subheader("3. Proyección de Coste")
@@ -1710,16 +1723,59 @@ def _modo_evm_por_actividad() -> None:
     with col_d3:
         with st.expander("❓ Fórmula TCPI(BAC)"):
             st.markdown(f"TCPI(BAC) = ({bac_act:,.0f} - {ev_total_act:,.0f}) / ({bac_act:,.0f} - {ac_total_act:,.0f}) = {tcpi_act:.2f}. Para cerrar en BAC hay que duplicar eficiencia.")
-        st.metric("TCPI(BAC)", f"{tcpi_act:.2f}")
+        st.metric("TCPI(BAC)", f"{tcpi_act:.4f}")
     with col_d4:
         with st.expander("❓ Fórmula VAC"):
             st.markdown(f"VAC = BAC - EAC = {bac_act:,.0f} - {eac_act:,.0f} = {vac_act:,.0f} EUR. Se espera terminar por encima si VAC < 0.")
         st.metric("VAC (€)", f"{vac_act:,.2f}")
 
     st.markdown("---")
-    st.subheader("4. Conclusiones")
+    st.subheader("4. Diferencia AC − PV y repercusión en el plazo")
+    col_diff1, col_diff2 = st.columns(2)
+    with col_diff1:
+        diff_ac_pv = float(ac_total_act) - pv_total_act
+        st.metric("AC − PV (€)", f"{diff_ac_pv:,.2f}")
+        st.markdown(
+            "Se ha gastado más de lo planificado para esta fecha: "
+            f"{float(ac_total_act):,.2f} − {pv_total_act:,.2f} = {diff_ac_pv:,.2f} €. "
+            "Esta diferencia mezcla dos efectos: el sobrecoste del trabajo realmente "
+            "ejecutado (CV = −3400 €) y el valor del trabajo planificado que aún no "
+            "se ha realizado (SV = −1633,33 €). Por eso no coincide con el sobrecoste "
+            "del trabajo ejecutado."
+        )
+    with col_diff2:
+        st.markdown(
+            "**Repercusión sobre la fecha de finalización:**\n"
+            "- Camino crítico original: **A → B → C → E**.\n"
+            "- La actividad **D** tiene una holgura total de **2 días**.\n"
+            "- El desfase de D puede absorberse si comienza el lunes 13/07 y mantiene "
+            "su duración de 3 días: consume toda su holgura pero no retrasa la "
+            "finalización.\n"
+            "- El menor avance de C (30 % frente al 40 % previsto) sí afecta al "
+            "camino crítico y requiere seguimiento y posibles medidas.\n"
+            "- **SV** y **SPI** **no** permiten, por sí solos, determinar cuántos días "
+            "se retrasará el proyecto; para eso habría que actualizar el calendario con "
+            "las duraciones restantes estimadas."
+        )
+
+    st.subheader("5. Eficiencia requerida para cerrar en presupuesto")
+    factor_tcpi = tcpi_act / cpi_final_act if cpi_final_act > 0 else 0.0
     st.markdown(
-        f"Proyecto ligeramente retrasado (SPI = {spi_final_act:.2f}) pero con sobrecoste muy alto (CPI = {cpi_final_act:.2f}). Si nada cambia, coste final ~{eac_act:,.0f} EUR. Para {bac_act:,.0f} EUR hay que duplicar eficiencia (TCPI = {tcpi_act:.2f}): poco realista -> replanificar."
+        f"**TCPI(BAC) = {tcpi_act:.4f}**. Para terminar dentro del presupuesto original "
+        f"habría que multiplicar la eficiencia planificada por {tcpi_act:.2f} a partir de "
+        f"ahora. Frente al CPI actual de {cpi_final_act:.4f}, supondría multiplicar la "
+        f"eficiencia observada por **{factor_tcpi:.2f}**."
+    )
+
+    st.subheader("6. Conclusiones")
+    st.markdown(
+        f"Proyecto retrasado (SPI = {spi_final_act:.2f}) y con sobrecoste muy alto "
+        f"(CPI = {cpi_final_act:.2f}). Si nada cambia, el coste final estimado es "
+        f"{eac_act:,.0f} €, unos {eac_act - float(bac_act):,.0f} € por encima del BAC. "
+        "Terminar dentro del presupuesto original parece poco realista sin cambios "
+        "sustanciales: habría que investigar las causas del sobrecoste, valorar medidas "
+        "correctoras, revisar la estimación del coste pendiente y, si no es posible "
+        "cumplir el presupuesto, plantear una revisión del presupuesto o del alcance."
     )
 
     st.markdown("---")
@@ -1742,7 +1798,13 @@ def _modo_evm() -> None:
     st.markdown("### 📊 Gestión del Valor Ganado (EVM)")
     with st.expander("❓ Conceptos Básicos...", expanded=True):
         st.markdown("- BAC... - PV... - EV... - AC... - SV... - CV... - SPI... - CPI...")
-    modo_evm = st.selectbox("Modo de cálculo:", ["Modo estándar", "Modo por actividad"], index=0, key="evm__modo")
+    modo_evm = st.selectbox(
+        "Modo de cálculo:",
+        ["Modo estándar", "Modo por actividad"],
+        index=1,
+        key="evm__modo_v2",
+        help="«Modo por actividad» resuelve la tarea EVM del proyecto PERT (BAC=10000, AC=7300).",
+    )
     if modo_evm == "Modo estándar":
         # El bloque estándar está en la función auxiliar
         _modo_evm_estandar()
