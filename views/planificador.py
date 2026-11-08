@@ -1604,6 +1604,7 @@ def _modo_evm_por_actividad() -> None:
     df_inicial_act = pd.DataFrame(datos_iniciales_act)
 
     st.markdown("### 📋 Actividades (Edita % Real si cambia)")
+    st.caption("Pulsa Enter o haz clic fuera de la celda para aplicar el cambio.")
     df_editado_act = st.data_editor(
         df_inicial_act,
         column_config={
@@ -1671,22 +1672,22 @@ def _modo_evm_por_actividad() -> None:
     st.subheader("1. Variables Básicas de EVM")
     col_a1, col_a2, col_a3, col_a4 = st.columns(4)
     with col_a1:
-        with st.expander("❓ ¿Cómo se calcula BAC?"):
+        with st.popover("❓ ¿Cómo se calcula BAC?"):
             st.markdown(f"**BAC** = Presupuesto total aprobado = {float(bac_act):,.0f} €.")
         st.metric("BAC (€)", f"{float(bac_act):,.2f}")
     with col_a2:
-        with st.expander("❓ ¿Cómo se calcula PV?"):
+        with st.popover("❓ ¿Cómo se calcula PV?"):
             st.markdown(
                 f"**PV** = suma según calendario (A={plan_a}%, B={plan_b}%, "
                 f"C={plan_c}%, D={plan_d}%, E={plan_e}%): {pv_total_act:,.0f} €."
             )
         st.metric("PV (€)", f"{pv_total_act:,.2f}")
     with col_a3:
-        with st.expander("❓ ¿Cómo se calcula EV?"):
+        with st.popover("❓ ¿Cómo se calcula EV?"):
             st.markdown(f"**EV** = suma del valor real = {ev_total_act:,.0f} €.")
         st.metric("EV (€)", f"{ev_total_act:,.2f}")
     with col_a4:
-        with st.expander("❓ ¿Cómo se calcula AC?"):
+        with st.popover("❓ ¿Cómo se calcula AC?"):
             st.markdown(f"**AC** = Coste real acumulado = {float(ac_total_act):,.0f} €.")
         st.metric("AC (€)", f"{float(ac_total_act):,.2f}")
 
@@ -1694,7 +1695,7 @@ def _modo_evm_por_actividad() -> None:
     st.subheader("2. Métricas EVM (como en el ejercicio resuelto)")
     col_b1, col_b2 = st.columns(2)
     with col_b1:
-        with st.expander("❓ Fórmulas CV y SV"):
+        with st.popover("❓ Fórmulas CV y SV"):
             st.markdown(
                 f"**CV = EV - AC = {ev_total_act:,.0f} - {ac_total_act:,.0f} = {cv_final_act:,.0f} EUR** (sobrecoste si negativo). "
                 f"**SV = EV - PV = {ev_total_act:,.0f} - {pv_total_act:,.0f} = {sv_final_act:,.0f} EUR** (retraso si negativo)."
@@ -1702,7 +1703,7 @@ def _modo_evm_por_actividad() -> None:
         st.metric("CV (€)", f"{cv_final_act:,.2f}", delta="Sobrecoste importante" if cv_final_act < 0 else "Ahorro")
         st.metric("SV (€)", f"{sv_final_act:,.2f}", delta="Retraso" if sv_final_act < 0 else "Adelantado")
     with col_b2:
-        with st.expander("❓ Fórmulas CPI y SPI"):
+        with st.popover("❓ Fórmulas CPI y SPI"):
             st.markdown(
                 f"**CPI = EV / AC = {ev_total_act:,.0f} / {ac_total_act:,.0f} = {cpi_final_act:.4f}** (baja eficiencia si <1). "
                 f"**SPI = EV / PV = {ev_total_act:,.0f} / {pv_total_act:,.0f} = {spi_final_act:.4f}** (retraso si <1)."
@@ -1714,19 +1715,19 @@ def _modo_evm_por_actividad() -> None:
     st.subheader("3. Proyección de Coste")
     col_d1, col_d2, col_d3, col_d4 = st.columns(4)
     with col_d1:
-        with st.expander("❓ Fórmula EAC"):
+        with st.popover("❓ Fórmula EAC"):
             st.markdown(f"EAC = BAC / CPI = {bac_act:,.0f} / {cpi_final_act:.4f} = {eac_act:,.2f} EUR")
         st.metric("EAC (€)", f"{eac_act:,.2f}", delta=f"{vac_act:,.0f} € vs BAC" if vac_act != 0 else None)
     with col_d2:
-        with st.expander("❓ Fórmula ETC"):
+        with st.popover("❓ Fórmula ETC"):
             st.markdown(f"ETC = EAC - AC = {eac_act:,.0f} - {ac_total_act:,.0f} = {etc_act:,.0f} EUR (lo que falta por gastar estimado).")
         st.metric("ETC (€)", f"{etc_act:,.2f}")
     with col_d3:
-        with st.expander("❓ Fórmula TCPI(BAC)"):
+        with st.popover("❓ Fórmula TCPI(BAC)"):
             st.markdown(f"TCPI(BAC) = ({bac_act:,.0f} - {ev_total_act:,.0f}) / ({bac_act:,.0f} - {ac_total_act:,.0f}) = {tcpi_act:.2f}. Para cerrar en BAC hay que duplicar eficiencia.")
         st.metric("TCPI(BAC)", f"{tcpi_act:.4f}")
     with col_d4:
-        with st.expander("❓ Fórmula VAC"):
+        with st.popover("❓ Fórmula VAC"):
             st.markdown(f"VAC = BAC - EAC = {bac_act:,.0f} - {eac_act:,.0f} = {vac_act:,.0f} EUR. Se espera terminar por encima si VAC < 0.")
         st.metric("VAC (€)", f"{vac_act:,.2f}")
 
