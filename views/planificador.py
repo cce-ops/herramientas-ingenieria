@@ -1622,11 +1622,11 @@ def _modo_evm_por_actividad() -> None:
     with col_plan_b:
         plan_b = st.number_input("B completado según plan (%)", min_value=0.0, max_value=100.0, value=100.0, step=1.0, key="evm_plan_b")
     with col_plan_c:
-        plan_c = st.number_input("C completado según plan (%)", min_value=0.0, max_value=100.0, value=40.0, step=1.0, key="evm_plan_c", help="Según calendario: 2/5 de C = 40% planificado")
+        plan_c = st.number_input("C completado según plan (%)", min_value=0.0, max_value=100.0, value=40.0, step=1.0, key="evm_plan_c")
     with col_plan_d:
-        plan_d = st.number_input("D completado según plan (%)", min_value=0.0, max_value=100.0, value=66.6667, step=0.01, format="%.2f", key="evm_plan_d", help="Según calendario: 2/3 de D = 66,67% planificado")
+        plan_d = st.number_input("D completado según plan (%)", min_value=0.0, max_value=100.0, value=66.6667, step=0.01, format="%.2f", key="evm_plan_d")
     with col_plan_e:
-        plan_e = st.number_input("E completado según plan (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key="evm_plan_e", help="E no había empezado en la fecha de control")
+        plan_e = st.number_input("E completado según plan (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key="evm_plan_e")
 
     actividades = []
     pv_total_act = 0.0
