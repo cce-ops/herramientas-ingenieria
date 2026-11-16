@@ -1097,6 +1097,8 @@ def _calcular_avanzado(df: pd.DataFrame, fecha_inicio):
         "matriz": matriz,
         "gantt": gantt,
         "criticos": list(criticos),
+        "t_early": t_early,
+        "t_last": t_last,
     }
 
 
@@ -1139,7 +1141,7 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
 
     with col_der:
         st.markdown("**Diagrama PERT (Sucesos y Actividades)**")
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(8, 4.7))
         grafo = res["grafo"]
 
         # Layout PERT clasico: nodos ordenados por nivel topologico (izquierda a derecha)
@@ -1153,75 +1155,166 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
         por_nivel = {}
         for n, nv in niveles_topo.items():
             por_nivel.setdefault(nv, []).append(n)
+        # Separacion entre niveles y ramas (circulos grandes, sin solapes).
         posiciones = {}
         for nv, nodos in por_nivel.items():
             for idx, n in enumerate(nodos):
-                posiciones[n] = (nv * 3.0, -idx * 2.0)
+                posiciones[n] = (nv * 7.5, -idx * 5.5)
 
-        # Colores de nodos: rojo si critico
-        colores_nodo = [
-            "#e74c3c" if n in res["criticos"] else "#3498db"
-            for n in grafo.nodes()
-        ]
-        nx.draw_networkx_nodes(
-            grafo, posiciones, node_size=1800, node_color=colores_nodo,
-            edgecolors="black", linewidths=2, ax=ax,
-        )
+        radio = 2.0
 
-        # Etiquetas de nodos: numero + E (EARLY) y L (LAST)
-        t_early_map = {}
-        t_last_map = {}
-        if "tabla" in res:
+        # Evitar que un nodo quede encima de una arista que "salta" su nivel:
+        # se prueba arriba y abajo y se elige el lado con mas holgura.
+        def _dist_punto_segmento(px, py, ax_, ay_, bx_, by_):
+            dx, dy = bx_ - ax_, by_ - ay_
+            den = dx * dx + dy * dy
+            if den == 0:
+                return float(np.hypot(px - ax_, py - ay_))
+            t = max(0.0, min(1.0, ((px - ax_) * dx + (py - ay_) * dy) / den))
+            return float(np.hypot(px - (ax_ + t * dx), py - (ay_ + t * dy)))
+
+        for _ in range(4):
+            for w in list(posiciones):
+                xw, yw = posiciones[w]
+                saltos = [
+                    (u, v) for u, v in grafo.edges()
+                    if niveles_topo[u] < niveles_topo[w] < niveles_topo[v]
+                ]
+                if not saltos:
+                    continue
+
+                def holgura(yc):
+                    return min(
+                        _dist_punto_segmento(xw, yc, *posiciones[u], *posiciones[v])
+                        for u, v in saltos
+                    )
+
+                if holgura(yw) >= radio * 2.3:
+                    continue
+                paso = radio * 2.6
+                arriba, abajo = holgura(yw + paso), holgura(yw - paso)
+                posiciones[w] = (xw, yw + paso if arriba >= abajo else yw - paso)
+
+        def _rad_edge_avanzado(u, v):
+            """Curva una arista si pasa demasiado cerca de otro suceso."""
+            p0 = np.array(posiciones[u], dtype=float)
+            p1 = np.array(posiciones[v], dtype=float)
+            d = p1 - p0
+            denom = float(np.dot(d, d))
+            if denom == 0:
+                return 0.03
+            for w, pw in posiciones.items():
+                if w in (u, v):
+                    continue
+                p = np.array(pw, dtype=float)
+                t = float(np.dot(p - p0, d) / denom)
+                if 0.1 < t < 0.9:
+                    dist = float(np.linalg.norm(p - (p0 + t * d)))
+                    if dist < radio * 1.2:
+                        return 0.35
+            return 0.05
+
+        # Tiempos EARLY/LAST por suceso (los devuelve el calculo; si el
+        # resultado viene de una sesion anterior, se reconstruyen de la tabla).
+        t_early_map = dict(res.get("t_early") or {})
+        t_last_map = dict(res.get("t_last") or {})
+        if not t_early_map and "tabla" in res:
             for _, row in res["tabla"].iterrows():
-                parts = str(row["i-j"]).split("-")
-                if len(parts) == 2:
-                    u, v = parts[0], parts[1]
-                    t_early_map[u] = row["ti"]
-                    t_early_map[v] = row["tj"]
-                    t_last_map[u] = row["ti*"]
-                    t_last_map[v] = row["tj*"]
+                u, v = [int(p) for p in str(row["i-j"]).split("-")]
+                t_early_map[u], t_early_map[v] = row["ti"], row["tj"]
+                t_last_map[u], t_last_map[v] = row["ti*"], row["tj*"]
         for n in grafo.nodes():
-            if n not in t_early_map:
-                t_early_map[n] = 0.0
-                t_last_map[n] = 0.0
+            t_early_map.setdefault(n, 0.0)
+            t_last_map.setdefault(n, 0.0)
 
-        etiquetas_nodo = {}
-        for n in grafo.nodes():
-            te = t_early_map.get(n, 0)
-            tl = t_last_map.get(n, 0)
-            etiquetas_nodo[n] = f"{n}\nE={te:.0f}\nL={tl:.0f}"
-        nx.draw_networkx_labels(
-            grafo, posiciones, labels=etiquetas_nodo, font_size=7, font_weight="bold", ax=ax,
-        )
+        # --- Nodos estilo apuntes: circulo con aspas (X) y numeros en rombo ---
+        #   arriba = i · izquierda = t_i · derecha = t*i · abajo (rojo) = H_i
+        d_aspas = radio / np.sqrt(2)
+        offy = radio * 0.55
 
-        # Colores y grosor de aristas
-        colores_arista = [
-            "red" if (u in res["criticos"] and v in res["criticos"]) else "gray"
-            for u, v in grafo.edges()
-        ]
-        anchos = [3 if (u in res["criticos"] and v in res["criticos"]) else 1.5 for u, v in grafo.edges()]
-        # Ficticias (dur=0) como discontinuas
-        estilos = ["dashed" if grafo[u][v].get("te", 1) == 0 else "solid" for u, v in grafo.edges()]
-        for i, (u, v) in enumerate(grafo.edges()):
-            nx.draw_networkx_edges(
-                grafo, posiciones, edgelist=[(u, v)], edge_color=colores_arista[i],
-                width=anchos[i], arrows=True, arrowstyle="->", arrowsize=15, ax=ax,
-                style=estilos[i], connectionstyle="arc3,rad=0.05",
+        def _off_x(txt):
+            """Separacion horizontal segun el numero de cifras."""
+            if len(txt) <= 1:
+                return radio * 0.50
+            if len(txt) == 2:
+                return radio * 0.42
+            return radio * 0.32
+
+        for n, (x, y) in posiciones.items():
+            circ = plt.Circle(
+                (x, y), radio, facecolor="white", edgecolor="black",
+                linewidth=2.2, zorder=3,
             )
+            ax.add_patch(circ)
+            ax.plot(
+                [x - d_aspas, x + d_aspas], [y - d_aspas, y + d_aspas],
+                color="black", linewidth=1.1, zorder=4,
+            )
+            ax.plot(
+                [x - d_aspas, x + d_aspas], [y + d_aspas, y - d_aspas],
+                color="black", linewidth=1.1, zorder=4,
+            )
+            texto_early = _fmt_num(t_early_map[n])
+            texto_last = _fmt_num(t_last_map[n])
+            ax.text(
+                x, y + offy, str(n), ha="center", va="center",
+                fontsize=12, fontweight="bold", zorder=5,
+            )  # i (arriba)
+            ax.text(
+                x - _off_x(texto_early), y, texto_early, ha="right",
+                va="center", fontsize=11, zorder=5,
+            )  # t_i (izquierda)
+            ax.text(
+                x + _off_x(texto_last), y, texto_last, ha="left",
+                va="center", fontsize=11, zorder=5,
+            )  # t*i (derecha)
+            ax.text(
+                x, y - offy, _fmt_num(t_last_map[n] - t_early_map[n]),
+                ha="center", va="center", fontsize=11, color="red", zorder=5,
+            )  # H_i (abajo)
 
-        # Etiquetas de aristas: nombre actividad + duracion
-        etiquetas = {}
+        # Aristas: critica en rojo, ficticia (te=0) discontinua y gris.
+        # Etiquetas: actividad a un lado de la linea y duracion al otro.
         for u, v in grafo.edges():
-            act = grafo[u][v].get("act", "")
-            dur = grafo[u][v].get("te", "")
-            if dur == "":
-                dur = grafo.nodes[u].get("dur", "")
-            etiquetas[(u, v)] = f"{act}\n{dur:.1f}" if isinstance(dur, float) else f"{act}\n{dur}"
-        nx.draw_networkx_edge_labels(
-            grafo, posiciones, edge_labels=etiquetas, font_color="blue", ax=ax,
-            font_size=8,
-        )
+            datos = grafo[u][v]
+            critica = bool(datos.get("is_critical", False))
+            ficticia = abs(float(datos.get("te", 1))) < 1e-9
+            act = str(datos.get("act", ""))
+            dur = float(datos.get("te", 0))
+            color = "red" if critica else ("#6c757d" if ficticia else "black")
+            width = 2.5 if critica else (1.5 if ficticia else 2.0)
+            style = "dashed" if ficticia else "solid"
+            nx.draw_networkx_edges(
+                grafo, posiciones, edgelist=[(u, v)], edge_color=color,
+                width=width, arrows=True, arrowstyle="->", arrowsize=18,
+                ax=ax, style=style,
+                connectionstyle=f"arc3,rad={_rad_edge_avanzado(u, v)}",
+            )
+            x0, y0 = posiciones[u]
+            x1, y1 = posiciones[v]
+            xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
+            dx, dy = x1 - x0, y1 - y0
+            lon = float(np.hypot(dx, dy))
+            nx_, ny_ = (-dy / lon, dx / lon) if lon else (0.0, 1.0)
+            off_txt = 1.0
+            bbox = dict(
+                boxstyle="round,pad=0.2", facecolor="white",
+                edgecolor="none", alpha=0.9,
+            )
+            ax.text(
+                xm + nx_ * off_txt, ym + ny_ * off_txt, act,
+                ha="center", va="center", fontsize=13, fontweight="bold",
+                color=color, zorder=6, bbox=bbox,
+            )  # actividad
+            ax.text(
+                xm - nx_ * off_txt, ym - ny_ * off_txt, _fmt_num(dur),
+                ha="center", va="center", fontsize=11, color=color,
+                zorder=6, bbox=bbox,
+            )  # duracion
+
         ax.axis("off")
+        ax.set_aspect("equal", adjustable="datalim")
+        ax.margins(0.20)
         mostrar_figura(fig)
 
         st.markdown("**Diagrama de Gantt**")
@@ -1950,7 +2043,7 @@ def render(_ctx: dict) -> None:
     tab_basico, tab_avanzado, tab_evm = st.tabs(
         [
             "🟢 Modo Básico (Actividades y Precedencias)",
-            "🔵 Modo Avanzado (Nodos y Zaderenko)",
+            "🔵 Modo Avanzado (Nodos)",
             "📈 EVM (Gestión del Valor Ganado)",
         ],
         on_change="rerun",
