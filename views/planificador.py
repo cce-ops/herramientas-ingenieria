@@ -391,6 +391,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     t_early = res["early"]
     t_last = res["last"]
     usar_pert = res.get("usar_pert", False)
+    tabla = res["tabla"]
 
     # --- 1. Diagrama PERT (sucesos y actividades) ---
     st.markdown("**1. Diagrama PERT (sucesos y actividades)**")
