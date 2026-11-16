@@ -438,45 +438,83 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
                     return 0.30
         return 0.03
 
-    colores_nodo = [
-        "#e74c3c" if any(_es_critica_aoa(u, v) for u, v in grafo_aoa.edges() if u == n or v == n) else "#3498db"
-        for n in grafo_aoa.nodes()
-    ]
-    nx.draw_networkx_nodes(
-        grafo_aoa, pos_aoa, node_size=1600, node_color=colores_nodo,
-        edgecolors="black", linewidths=2, ax=ax_pert,
-    )
-    etiquetas_nodo = {
-        n: f"{n}\nE={_fmt_num(t_early[n])}\nL={_fmt_num(t_last[n])}"
-        for n in grafo_aoa.nodes()
-    }
-    nx.draw_networkx_labels(
-        grafo_aoa, pos_aoa, labels=etiquetas_nodo, font_size=7,
-        font_weight="bold", ax=ax_pert,
-    )
+    # Nodos: circulos vacios (estilo apuntes) con borde negro y cruz interior que
+    # divide el nodo en 4 cuadrantes:
+    #   arriba-izq : numero de suceso (i)
+    #   arriba-der : t*i  (tiempo LAST / mas tarde)
+    #   abajo-izq  : t_i  (tiempo EARLY / mas temprano)
+    #   abajo-der  : H_i  (holgura = t*i - t_i)
+    radio = 0.45
+    for n, (x, y) in pos_aoa.items():
+        circ = plt.Circle(
+            (x, y), radio, facecolor="white", edgecolor="black", linewidth=2, zorder=3,
+        )
+        ax_pert.add_patch(circ)
+        # Cruz interior
+        ax_pert.plot(
+            [x - radio, x + radio], [y, y], color="black", linewidth=1, zorder=2,
+        )
+        ax_pert.plot(
+            [x, x], [y - radio, y + radio], color="black", linewidth=1, zorder=2,
+        )
+        off = radio * 0.62
+        ax_pert.text(
+            x - off, y + off, str(n),
+            ha="right", va="bottom", fontsize=10, fontweight="bold", zorder=4,
+        )  # i (arriba-izq)
+        ax_pert.text(
+            x + off, y + off, _fmt_num(t_last[n]),
+            ha="left", va="bottom", fontsize=9, zorder=4,
+        )  # t*i (arriba-der)
+        ax_pert.text(
+            x - off, y - off, _fmt_num(t_early[n]),
+            ha="right", va="top", fontsize=9, zorder=4,
+        )  # t_i (abajo-izq)
+        ax_pert.text(
+            x + off, y - off, _fmt_num(t_last[n] - t_early[n]),
+            ha="left", va="top", fontsize=9, zorder=4,
+        )  # H_i (abajo-der)
+
+    # Aristas: letra de actividad arriba, duracion abajo. Ficticias punteadas.
+    # Camino crítico en rojo y mas grueso.
     for u, v in grafo_aoa.edges():
         critica = _es_critica_aoa(u, v)
         ficticia = grafo_aoa[u][v].get("dur", 1) == 0
+        act = grafo_aoa[u][v].get("act", "")
+        if act.startswith("Fict_"):
+            act = act.split("_", 1)[1] + "\u2032"  # Fict_D -> D'
+        dur = grafo_aoa[u][v].get("te", 0)
+        color = "red" if critica else ("#6c757d" if ficticia else "black")
+        width = 2.5 if critica else (1.5 if ficticia else 2.0)
+        style = "dashed" if ficticia else "solid"
+        rad = _rad_edge(u, v)
         nx.draw_networkx_edges(
             grafo_aoa, pos_aoa, edgelist=[(u, v)],
-            edge_color="red" if critica else "gray",
-            width=3 if critica else 1.5,
-            arrows=True, arrowstyle="->", arrowsize=15, ax=ax_pert,
-            style="dashed" if ficticia else "solid",
-            connectionstyle=f"arc3,rad={_rad_edge(u, v)}",
+            edge_color=color, width=width, arrows=True, arrowstyle="->",
+            arrowsize=14, ax=ax_pert, style=style,
+            connectionstyle=f"arc3,rad={rad}",
         )
-    etiquetas = {}
-    for u, v in grafo_aoa.edges():
-        act = grafo_aoa[u][v].get("act", "")
-        dur = grafo_aoa[u][v].get("te", 0)
-        etiquetas[(u, v)] = f"{act}\n{_fmt_num(dur)}"
-    for (u, v), etiqueta in etiquetas.items():
-        nx.draw_networkx_edge_labels(
-            grafo_aoa, pos_aoa, edge_labels={(u, v): etiqueta},
-            font_color="blue", ax=ax_pert, font_size=8,
-            connectionstyle=f"arc3,rad={_rad_edge(u, v)}",
-        )
+        # Etiquetas: actividad a un lado, duracion al otro (texto horizontal).
+        x0, y0 = pos_aoa[u]
+        x1, y1 = pos_aoa[v]
+        xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
+        dx, dy = x1 - x0, y1 - y0
+        lon = float(np.hypot(dx, dy))
+        nx_, ny_ = (-dy / lon, dx / lon) if lon else (0.0, 1.0)  # normal al borde
+        off_txt = 0.18
+        ax_pert.text(
+            xm + nx_ * off_txt, ym + ny_ * off_txt, act,
+            ha="center", va="center", fontsize=10, fontweight="bold",
+            color=color, zorder=5,
+        )  # actividad arriba del borde
+        ax_pert.text(
+            xm - nx_ * off_txt, ym - ny_ * off_txt, _fmt_num(dur),
+            ha="center", va="center", fontsize=9, color=color, zorder=5,
+        )  # duracion abajo del borde
+
     ax_pert.axis("off")
+    ax_pert.set_aspect("equal", adjustable="datalim")
+    ax_pert.margins(0.22)
     mostrar_figura(fig_pert)
 
     # --- 2. Matriz de Zaderenko ---
