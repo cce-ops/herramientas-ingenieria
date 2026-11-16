@@ -478,7 +478,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     #   arriba-der : t*i  (tiempo LAST / mas tarde)
     #   abajo-izq  : t_i  (tiempo EARLY / mas temprano)
     #   abajo-der  : H_i  (holgura = t*i - t_i)
-    radio = 0.62
+    radio = 0.72
     for n, (x, y) in pos_aoa.items():
         circ = plt.Circle(
             (x, y), radio, facecolor="white", edgecolor="black", linewidth=2.2, zorder=3,
@@ -491,23 +491,27 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         ax_pert.plot(
             [x, x], [y - radio, y + radio], color="black", linewidth=1.1, zorder=2,
         )
-        # Offset para que cada numero quede centrado en su cuadrante (dentro del circulo)
-        off = radio * 0.46
+        # Offset calibrado para centrar cada numero en su cuadrante.
+        # Se suma un padding pequeno (pad) para que numeros largos (ej. "15")
+        # no toquen el borde del circulo.
+        pad = 0.06
+        offx = radio * 0.50 + pad
+        offy = radio * 0.50 + pad
         ax_pert.text(
-            x - off * 0.55, y + off * 0.55, str(n),
-            ha="right", va="bottom", fontsize=10.5, fontweight="bold", zorder=4,
+            x - offx, y + offy, str(n),
+            ha="right", va="bottom", fontsize=11, fontweight="bold", zorder=4,
         )  # i (arriba-izq)
         ax_pert.text(
-            x + off * 0.55, y + off * 0.55, _fmt_num(t_last[n]),
-            ha="left", va="bottom", fontsize=9.5, zorder=4,
+            x + offx, y + offy, _fmt_num(t_last[n]),
+            ha="left", va="bottom", fontsize=10, zorder=4,
         )  # t*i (arriba-der)
         ax_pert.text(
-            x - off * 0.55, y - off * 0.55, _fmt_num(t_early[n]),
-            ha="right", va="top", fontsize=9.5, zorder=4,
+            x - offx, y - offy, _fmt_num(t_early[n]),
+            ha="right", va="top", fontsize=10, zorder=4,
         )  # t_i (abajo-izq)
         ax_pert.text(
-            x + off * 0.55, y - off * 0.55, _fmt_num(t_last[n] - t_early[n]),
-            ha="left", va="top", fontsize=9.5, zorder=4,
+            x + offx, y - offy, _fmt_num(t_last[n] - t_early[n]),
+            ha="left", va="top", fontsize=10, zorder=4,
         )  # H_i (abajo-der)
 
     # Aristas: letra de actividad arriba, duracion abajo. Ficticias punteadas.
@@ -548,8 +552,16 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         )  # duracion al otro lado del borde
 
     ax_pert.axis("off")
-    ax_pert.margins(0.25)
+    ax_pert.set_aspect("equal", adjustable="datalim")  # circulos de verdad, no ovalos
+    ax_pert.margins(0.30)
     mostrar_figura(fig_pert)
+
+    # Nota explicativa de los 4 cuadros de cada nodo (como en los apuntes).
+    st.caption(
+        "Cada suceso lleva 4 datos: arriba-izq = número de suceso (i) · "
+        "arriba-der = t*i (tiempo más tarde / LAST) · abajo-izq = t_i "
+        "(tiempo más temprano / EARLY) · abajo-der = H_i = t*i − t_i (holgura)."
+    )
 
     # --- 2. Matriz de Zaderenko ---
     st.markdown("**2. Matriz de Zaderenko**")
