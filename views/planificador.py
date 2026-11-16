@@ -608,7 +608,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         "CC": "Camino Crítico: CC si HTij = 0; en caso contrario, -.",
     }
     filas_holgura = []
-    for _, fila in tabla.iterrows():
+    for _, fila in res["tabla"].iterrows():
         filas_holgura.append(
             {
                 "Actividad": fila["Actividad"],
