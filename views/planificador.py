@@ -581,24 +581,15 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
 
     # --- 2. Matriz de Zaderenko ---
     st.markdown("**2. Matriz de Zaderenko**")
-    # Nodos del grafo actual (no de la sesion guardada), para evitar
-    # inconsistencias entre res["nodos"] y res["grafo"].
-    nodos = sorted(grafo.nodes())
-    etiquetas_filas = [f"{_fmt_num(t_early.get(n, 0.0))}   {n}" for n in nodos]
-    columnas = [str(n) for n in nodos]
+    etiquetas_filas = [f"{_fmt_num(t_early[n])}   {n}" for n in nodos_aoa]
+    columnas = [str(n) for n in nodos_aoa]
     matriz_z = pd.DataFrame("", index=etiquetas_filas, columns=columnas)
     matriz_z.index.name = "ti · i / j"
-    for u, v, datos in grafo.edges(data=True):
-        if str(v) in columnas:
-            matriz_z.loc[f"{_fmt_num(t_early.get(u, 0.0))}   {u}", str(v)] = _fmt_num(
-                datos.get("te", 0)
-            )
-    fila_tlast = pd.DataFrame(
-        [[_fmt_num(t_last.get(n, 0.0)) for n in nodos]],
-        index=["t*i/j"],
-        columns=columnas,
-    )
-    matriz_z = pd.concat([matriz_z, fila_tlast])
+    for u, v, datos in grafo_aoa.edges(data=True):
+        matriz_z.loc[f"{_fmt_num(t_early[u])}   {u}", str(v)] = _fmt_num(
+            datos.get("te", 0)
+        )
+    matriz_z.loc["t*i/j"] = [_fmt_num(t_last[n]) for n in nodos_aoa]
     ayudas_holgura = {
         "Actividad": "Suceso de origen i y suceso de destino j (i-j).",
         "Nombre": "Nombre de la actividad.",
