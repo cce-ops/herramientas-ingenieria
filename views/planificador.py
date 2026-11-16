@@ -411,11 +411,12 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             nivel_nodo[n] = nivel
 
     # Posicion inicial: x por nivel (tiempo), y por orden dentro del nivel.
+    # Separacion aumentada para que los circulos grandes no se solapen.
     pos_aoa = {}
     for nivel, nodos in enumerate(generaciones):
         nodos_ord = sorted(nodos, key=lambda n: -t_early.get(n, 0))
         for idx, n in enumerate(nodos_ord):
-            pos_aoa[n] = (nivel * 3.4, -idx * 2.4)
+            pos_aoa[n] = (nivel * 5.0, -idx * 3.5)
 
     # Refinamiento tipo barycenter (2 pasadas) para separar ramas y reducir cruces:
     #   adelante : ordenar cada nivel por la y-media de sus predecesores.
@@ -432,7 +433,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
 
             nodos_ord = sorted(nodos, key=clave_pred)
             for idx, n in enumerate(nodos_ord):
-                pos_aoa[n] = (nivel * 3.4, -idx * 2.4)
+                pos_aoa[n] = (nivel * 5.0, -idx * 3.5)
         for nivel in range(len(generaciones) - 2, -1, -1):
             nodos = generaciones[nivel]
 
@@ -444,7 +445,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
 
             nodos_ord = sorted(nodos, key=clave_succ)
             for idx, n in enumerate(nodos_ord):
-                pos_aoa[n] = (nivel * 3.4, -idx * 2.4)
+                pos_aoa[n] = (nivel * 5.0, -idx * 3.5)
 
     def _es_critica_aoa(u, v):
         dij = grafo_aoa[u][v].get("te", 0.0)
@@ -468,17 +469,22 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             t = float(np.dot(p - p0, d) / denom)
             if 0.1 < t < 0.9:
                 dist = float(np.linalg.norm(p - (p0 + t * d)))
-                if dist < 1.1:
+                if dist < 1.8:
                     return 0.35
         return 0.05
 
-    # Nodos: circulos vacios (estilo apuntes) con borde negro y cruz interior que
-    # divide el nodo en 4 cuadrantes, con los 4 numeros DENTRO del circulo:
+    # Nodos: circulos grandes y vacios (estilo apuntes) con borde negro y cruz
+    # interior que divide el nodo en 4 cuadrantes. Los 4 numeros van DENTRO del
+    # circulo, bien separados entre ellos y del borde:
     #   arriba-izq : i  (numero de suceso)
     #   arriba-der : t*i  (tiempo LAST / mas tarde)
     #   abajo-izq  : t_i  (tiempo EARLY / mas temprano)
     #   abajo-der  : H_i  (holgura = t*i - t_i)
-    radio = 0.72
+    radio = 1.5
+    # Offset: el texto empieza en la esquina de su cuadrante y entra hacia el
+    # centro del circulo, quedando bien dentro y sin tocar el borde.
+    offx = radio * 0.55
+    offy = radio * 0.55
     for n, (x, y) in pos_aoa.items():
         circ = plt.Circle(
             (x, y), radio, facecolor="white", edgecolor="black", linewidth=2.2, zorder=3,
@@ -491,27 +497,25 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         ax_pert.plot(
             [x, x], [y - radio, y + radio], color="black", linewidth=1.1, zorder=2,
         )
-        # Offset: cada numero empieza EN la esquina de su cuadrante y entra hacia
-        # el centro del circulo, para que quede bien DENTRO (sin tocar el borde).
-        off = radio * 0.42
+        # Cada numero queda centrado en su cuadrante, dentro del circulo.
         ax_pert.text(
-            x - off, y + off, str(n),
-            ha="left", va="top", fontsize=11, fontweight="bold", zorder=4,
+            x - offx, y + offy, str(n),
+            ha="right", va="bottom", fontsize=12, fontweight="bold", zorder=4,
         )  # i (arriba-izq)
         ax_pert.text(
-            x + off, y + off, _fmt_num(t_last[n]),
-            ha="right", va="top", fontsize=10, zorder=4,
+            x + offx, y + offy, _fmt_num(t_last[n]),
+            ha="left", va="bottom", fontsize=11, zorder=4,
         )  # t*i (arriba-der)
         ax_pert.text(
-            x - off, y - off, _fmt_num(t_early[n]),
-            ha="left", va="bottom", fontsize=10, zorder=4,
+            x - offx, y - offy, _fmt_num(t_early[n]),
+            ha="right", va="top", fontsize=11, zorder=4,
         )  # t_i (abajo-izq)
         ax_pert.text(
-            x + off, y - off, _fmt_num(t_last[n] - t_early[n]),
-            ha="right", va="bottom", fontsize=10, zorder=4,
+            x + offx, y - offy, _fmt_num(t_last[n] - t_early[n]),
+            ha="left", va="top", fontsize=11, zorder=4,
         )  # H_i (abajo-der)
 
-    # Aristas: letra de actividad arriba, duracion abajo. Ficticias punteadas.
+    # Aristas: letra de actividad y duracion con separacion de la linea.
     # Camino crítico en rojo y mas grueso.
     for u, v in grafo_aoa.edges():
         critica = _es_critica_aoa(u, v)
@@ -527,25 +531,28 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         nx.draw_networkx_edges(
             grafo_aoa, pos_aoa, edgelist=[(u, v)],
             edge_color=color, width=width, arrows=True, arrowstyle="->",
-            arrowsize=14, ax=ax_pert, style=style,
+            arrowsize=18, ax=ax_pert, style=style,
             connectionstyle=f"arc3,rad={rad}",
         )
-        # Etiquetas: actividad a un lado, duracion al otro (texto horizontal).
+        # Etiquetas: actividad a un lado, duracion al otro, con separacion de la linea.
         x0, y0 = pos_aoa[u]
         x1, y1 = pos_aoa[v]
         xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
         dx, dy = x1 - x0, y1 - y0
         lon = float(np.hypot(dx, dy))
         nx_, ny_ = (-dy / lon, dx / lon) if lon else (0.0, 1.0)  # normal al borde
-        off_txt = 0.20
+        off_txt = 0.55  # separacion clara de la linea
+        # Fondo blanco para que la letra/numero resalte sobre la linea.
+        bbox = dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="none", alpha=0.85)
         ax_pert.text(
             xm + nx_ * off_txt, ym + ny_ * off_txt, act,
-            ha="center", va="center", fontsize=10, fontweight="bold",
-            color=color, zorder=5,
+            ha="center", va="center", fontsize=12, fontweight="bold",
+            color=color, zorder=6, bbox=bbox,
         )  # actividad a un lado del borde
         ax_pert.text(
             xm - nx_ * off_txt, ym - ny_ * off_txt, _fmt_num(dur),
-            ha="center", va="center", fontsize=9, color=color, zorder=5,
+            ha="center", va="center", fontsize=11, color=color, zorder=6,
+            bbox=bbox,
         )  # duracion al otro lado del borde
 
     ax_pert.axis("off")
