@@ -396,21 +396,55 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     st.markdown("**1. Diagrama PERT (sucesos y actividades)**")
     fig_pert, ax_pert = plt.subplots(figsize=(10, 6))
 
-    niveles_topo = {}
-    for n in grafo_aoa.nodes():
-        pred = list(grafo_aoa.predecessors(n))
-        nivel = 0 if not pred else max(niveles_topo.get(p, 0) for p in pred) + 1
-        niveles_topo[n] = nivel
+    # --- Layout jerarquico ramificado (niveles topológicos, x = tiempo, y = rama) ---
+    # Las generaciones se calculan IGNORANDO aristas ficticias para que nodos como
+    # 4 y 5 queden en el mismo nivel (rama separada) aunque 5 dependa de 4 solo
+    # por una ficticia D' (como en los apuntes). Esto evita el efecto linea recta.
+    grafo_layout = grafo_aoa.copy()
+    for u, v, d in list(grafo_layout.edges(data=True)):
+        if d.get("ficticia", False):
+            grafo_layout.remove_edge(u, v)
+    generaciones = list(nx.topological_generations(grafo_layout))
+    nivel_nodo = {}
+    for nivel, nodos in enumerate(generaciones):
+        for n in nodos:
+            nivel_nodo[n] = nivel
 
-    por_nivel = {}
-    for n, nv in niveles_topo.items():
-        por_nivel.setdefault(nv, []).append(n)
-
+    # Posicion inicial: x por nivel (tiempo), y por orden dentro del nivel.
     pos_aoa = {}
-    for nv, nodos in por_nivel.items():
-        # El suceso con mayor tiempo EARLY queda arriba (como en los apuntes)
-        for idx, n in enumerate(sorted(nodos, key=lambda x: -t_early[x])):
-            pos_aoa[n] = (nv * 3.0, -idx * 2.0)
+    for nivel, nodos in enumerate(generaciones):
+        nodos_ord = sorted(nodos, key=lambda n: -t_early.get(n, 0))
+        for idx, n in enumerate(nodos_ord):
+            pos_aoa[n] = (nivel * 3.4, -idx * 2.4)
+
+    # Refinamiento tipo barycenter (2 pasadas) para separar ramas y reducir cruces:
+    #   adelante : ordenar cada nivel por la y-media de sus predecesores.
+    #   atras    : ordenar cada nivel por la y-media de sus sucesores.
+    for _ in range(2):
+        for nivel in range(1, len(generaciones)):
+            nodos = generaciones[nivel]
+
+            def clave_pred(n, _nodos=nodos):
+                preds = list(grafo_aoa.predecessors(n))
+                if not preds:
+                    return pos_aoa[n][1]
+                return sum(pos_aoa[p][1] for p in preds) / len(preds)
+
+            nodos_ord = sorted(nodos, key=clave_pred)
+            for idx, n in enumerate(nodos_ord):
+                pos_aoa[n] = (nivel * 3.4, -idx * 2.4)
+        for nivel in range(len(generaciones) - 2, -1, -1):
+            nodos = generaciones[nivel]
+
+            def clave_succ(n, _nodos=nodos):
+                sucs = list(grafo_aoa.successors(n))
+                if not sucs:
+                    return pos_aoa[n][1]
+                return sum(pos_aoa[s][1] for s in sucs) / len(sucs)
+
+            nodos_ord = sorted(nodos, key=clave_succ)
+            for idx, n in enumerate(nodos_ord):
+                pos_aoa[n] = (nivel * 3.4, -idx * 2.4)
 
     def _es_critica_aoa(u, v):
         dij = grafo_aoa[u][v].get("te", 0.0)
@@ -434,9 +468,9 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             t = float(np.dot(p - p0, d) / denom)
             if 0.1 < t < 0.9:
                 dist = float(np.linalg.norm(p - (p0 + t * d)))
-                if dist < 0.9:
-                    return 0.30
-        return 0.03
+                if dist < 1.1:
+                    return 0.35
+        return 0.05
 
     # Nodos: circulos vacios (estilo apuntes) con borde negro y cruz interior que
     # divide el nodo en 4 cuadrantes:
@@ -444,7 +478,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     #   arriba-der : t*i  (tiempo LAST / mas tarde)
     #   abajo-izq  : t_i  (tiempo EARLY / mas temprano)
     #   abajo-der  : H_i  (holgura = t*i - t_i)
-    radio = 0.45
+    radio = 0.42
     for n, (x, y) in pos_aoa.items():
         circ = plt.Circle(
             (x, y), radio, facecolor="white", edgecolor="black", linewidth=2, zorder=3,
@@ -501,20 +535,19 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         dx, dy = x1 - x0, y1 - y0
         lon = float(np.hypot(dx, dy))
         nx_, ny_ = (-dy / lon, dx / lon) if lon else (0.0, 1.0)  # normal al borde
-        off_txt = 0.18
+        off_txt = 0.20
         ax_pert.text(
             xm + nx_ * off_txt, ym + ny_ * off_txt, act,
             ha="center", va="center", fontsize=10, fontweight="bold",
             color=color, zorder=5,
-        )  # actividad arriba del borde
+        )  # actividad a un lado del borde
         ax_pert.text(
             xm - nx_ * off_txt, ym - ny_ * off_txt, _fmt_num(dur),
             ha="center", va="center", fontsize=9, color=color, zorder=5,
-        )  # duracion abajo del borde
+        )  # duracion al otro lado del borde
 
     ax_pert.axis("off")
-    ax_pert.set_aspect("equal", adjustable="datalim")
-    ax_pert.margins(0.22)
+    ax_pert.margins(0.25)
     mostrar_figura(fig_pert)
 
     # --- 2. Matriz de Zaderenko ---
