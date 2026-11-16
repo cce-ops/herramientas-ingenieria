@@ -491,27 +491,24 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         ax_pert.plot(
             [x, x], [y - radio, y + radio], color="black", linewidth=1.1, zorder=2,
         )
-        # Offset calibrado para centrar cada numero en su cuadrante.
-        # Se suma un padding pequeno (pad) para que numeros largos (ej. "15")
-        # no toquen el borde del circulo.
-        pad = 0.06
-        offx = radio * 0.50 + pad
-        offy = radio * 0.50 + pad
+        # Offset: cada numero empieza EN la esquina de su cuadrante y entra hacia
+        # el centro del circulo, para que quede bien DENTRO (sin tocar el borde).
+        off = radio * 0.42
         ax_pert.text(
-            x - offx, y + offy, str(n),
-            ha="right", va="bottom", fontsize=11, fontweight="bold", zorder=4,
+            x - off, y + off, str(n),
+            ha="left", va="top", fontsize=11, fontweight="bold", zorder=4,
         )  # i (arriba-izq)
         ax_pert.text(
-            x + offx, y + offy, _fmt_num(t_last[n]),
-            ha="left", va="bottom", fontsize=10, zorder=4,
+            x + off, y + off, _fmt_num(t_last[n]),
+            ha="right", va="top", fontsize=10, zorder=4,
         )  # t*i (arriba-der)
         ax_pert.text(
-            x - offx, y - offy, _fmt_num(t_early[n]),
-            ha="right", va="top", fontsize=10, zorder=4,
+            x - off, y - off, _fmt_num(t_early[n]),
+            ha="left", va="bottom", fontsize=10, zorder=4,
         )  # t_i (abajo-izq)
         ax_pert.text(
-            x + offx, y - offy, _fmt_num(t_last[n] - t_early[n]),
-            ha="left", va="top", fontsize=10, zorder=4,
+            x + off, y - off, _fmt_num(t_last[n] - t_early[n]),
+            ha="right", va="bottom", fontsize=10, zorder=4,
         )  # H_i (abajo-der)
 
     # Aristas: letra de actividad arriba, duracion abajo. Ficticias punteadas.
