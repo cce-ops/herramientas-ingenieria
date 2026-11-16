@@ -476,47 +476,56 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
                     return 0.35
         return 0.05
 
-    # Nodos: circulos grandes y vacios (estilo apuntes) con borde negro y cruz
-    # interior que divide el nodo en 4 cuadrantes. Los 4 numeros van DENTRO del
-    # circulo, bien separados entre ellos y del borde:
-    #   arriba-izq : i  (numero de suceso)
-    #   arriba-der : t*i  (tiempo LAST / mas tarde)
-    #   abajo-izq  : t_i  (tiempo EARLY / mas temprano)
-    #   abajo-der  : H_i  (holgura = t*i - t_i)
-    # Offset: cada numero se ancla en la esquina de su cuadrante y crece hacia el
-    # centro del circulo, quedando separado del borde y de los otros numeros.
-    offx = radio * 0.55
+    # Nodos: circulos grandes vacios (estilo apuntes) con aspas (X) que dividen
+    # el circulo en 4 sectores, y los 4 numeros colocados en rombo:
+    #   arriba    : i  (numero de suceso)
+    #   izquierda : t_i  (tiempo EARLY / mas temprano)
+    #   derecha   : t*i  (tiempo LAST / mas tarde)
+    #   abajo     : H_i  (holgura = t*i - t_i, en rojo como en los apuntes)
+    d_aspas = radio / np.sqrt(2)
     offy = radio * 0.55
+
+    def _off_x(txt):
+        """Separacion horizontal del numero segun su longitud, para que valores
+        de 2-3 cifras no toquen el borde del circulo."""
+        if len(txt) <= 1:
+            return radio * 0.50
+        if len(txt) == 2:
+            return radio * 0.42
+        return radio * 0.32
+
     for n, (x, y) in pos_aoa.items():
         circ = plt.Circle(
             (x, y), radio, facecolor="white", edgecolor="black", linewidth=2.2, zorder=3,
         )
         ax_pert.add_patch(circ)
-        # Cruz interior que divide en 4 cuadrantes
+        # Aspas (X) que dividen el circulo en 4 sectores, como en los apuntes
         ax_pert.plot(
-            [x - radio, x + radio], [y, y], color="black", linewidth=1.1, zorder=2,
+            [x - d_aspas, x + d_aspas], [y - d_aspas, y + d_aspas],
+            color="black", linewidth=1.1, zorder=4,
         )
         ax_pert.plot(
-            [x, x], [y - radio, y + radio], color="black", linewidth=1.1, zorder=2,
+            [x - d_aspas, x + d_aspas], [y + d_aspas, y - d_aspas],
+            color="black", linewidth=1.1, zorder=4,
         )
-        # ha/va corregidos: cada texto empieza en la esquina de su cuadrante y entra
-        # hacia el centro del circulo, quedando bien dentro y sin tocar el borde.
+        texto_early = _fmt_num(t_early[n])
+        texto_last = _fmt_num(t_last[n])
         ax_pert.text(
-            x - offx, y + offy, str(n),
-            ha="left", va="top", fontsize=12, fontweight="bold", zorder=4,
-        )  # i (arriba-izq)
+            x, y + offy, str(n),
+            ha="center", va="center", fontsize=12, fontweight="bold", zorder=5,
+        )  # i (arriba)
         ax_pert.text(
-            x + offx, y + offy, _fmt_num(t_last[n]),
-            ha="right", va="top", fontsize=11, zorder=4,
-        )  # t*i (arriba-der)
+            x - _off_x(texto_early), y, texto_early,
+            ha="right", va="center", fontsize=11, zorder=5,
+        )  # t_i (izquierda)
         ax_pert.text(
-            x - offx, y - offy, _fmt_num(t_early[n]),
-            ha="left", va="bottom", fontsize=11, zorder=4,
-        )  # t_i (abajo-izq)
+            x + _off_x(texto_last), y, texto_last,
+            ha="left", va="center", fontsize=11, zorder=5,
+        )  # t*i (derecha)
         ax_pert.text(
-            x + offx, y - offy, _fmt_num(t_last[n] - t_early[n]),
-            ha="right", va="bottom", fontsize=11, zorder=4,
-        )  # H_i (abajo-der)
+            x, y - offy, _fmt_num(t_last[n] - t_early[n]),
+            ha="center", va="center", fontsize=11, color="red", zorder=5,
+        )  # H_i (abajo)
 
     # Aristas: letra de actividad y duracion con separacion de la linea.
     # Camino crítico en rojo y mas grueso.
@@ -563,11 +572,11 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     ax_pert.margins(0.30)
     mostrar_figura(fig_pert)
 
-    # Nota explicativa de los 4 cuadros de cada nodo (como en los apuntes).
+    # Nota explicativa de los 4 numeros de cada nodo (como en los apuntes).
     st.caption(
-        "Cada suceso lleva 4 datos: arriba-izq = número de suceso (i) · "
-        "arriba-der = t*i (tiempo más tarde / LAST) · abajo-izq = t_i "
-        "(tiempo más temprano / EARLY) · abajo-der = H_i = t*i − t_i (holgura)."
+        "Cada suceso lleva 4 datos en rombo: arriba = número de suceso (i) · "
+        "izquierda = t_i (tiempo más temprano / EARLY) · derecha = t*i "
+        "(tiempo más tarde / LAST) · abajo (rojo) = H_i = t*i − t_i (holgura)."
     )
 
     # --- 2. Matriz de Zaderenko ---
