@@ -481,10 +481,9 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     #   abajo-izq  : t_i  (tiempo EARLY / mas temprano)
     #   abajo-der  : H_i  (holgura = t*i - t_i)
     radio = 1.5
-    # Offset: el texto empieza en la esquina de su cuadrante y entra hacia el
-    # centro del circulo, quedando bien dentro y sin tocar el borde.
-    offx = radio * 0.55
-    offy = radio * 0.55
+    # Offset reducido para separar los 4 numeros entre sí y del borde del circulo.
+    offx = radio * 0.35
+    offy = radio * 0.35
     for n, (x, y) in pos_aoa.items():
         circ = plt.Circle(
             (x, y), radio, facecolor="white", edgecolor="black", linewidth=2.2, zorder=3,
@@ -497,22 +496,23 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         ax_pert.plot(
             [x, x], [y - radio, y + radio], color="black", linewidth=1.1, zorder=2,
         )
-        # Cada numero queda centrado en su cuadrante, dentro del circulo.
+        # ha/va corregidos: cada texto empieza en la esquina de su cuadrante y entra
+        # hacia el centro del circulo, quedando bien dentro y sin tocar el borde.
         ax_pert.text(
             x - offx, y + offy, str(n),
-            ha="right", va="bottom", fontsize=12, fontweight="bold", zorder=4,
+            ha="left", va="top", fontsize=12, fontweight="bold", zorder=4,
         )  # i (arriba-izq)
         ax_pert.text(
             x + offx, y + offy, _fmt_num(t_last[n]),
-            ha="left", va="bottom", fontsize=11, zorder=4,
+            ha="right", va="top", fontsize=11, zorder=4,
         )  # t*i (arriba-der)
         ax_pert.text(
             x - offx, y - offy, _fmt_num(t_early[n]),
-            ha="right", va="top", fontsize=11, zorder=4,
+            ha="left", va="bottom", fontsize=11, zorder=4,
         )  # t_i (abajo-izq)
         ax_pert.text(
             x + offx, y - offy, _fmt_num(t_last[n] - t_early[n]),
-            ha="left", va="top", fontsize=11, zorder=4,
+            ha="right", va="bottom", fontsize=11, zorder=4,
         )  # H_i (abajo-der)
 
     # Aristas: letra de actividad y duracion con separacion de la linea.
@@ -541,7 +541,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         dx, dy = x1 - x0, y1 - y0
         lon = float(np.hypot(dx, dy))
         nx_, ny_ = (-dy / lon, dx / lon) if lon else (0.0, 1.0)  # normal al borde
-        off_txt = 0.55  # separacion clara de la linea
+        off_txt = 0.7  # separacion clara de la linea para que se lean letra y numero
         # Fondo blanco para que la letra/numero resalte sobre la linea.
         bbox = dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="none", alpha=0.85)
         ax_pert.text(
