@@ -591,6 +591,10 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             datos.get("te", 0)
         )
     matriz_z.loc["t*i/j"] = [_fmt_num(t_last[n]) for n in nodos_aoa]
+    columnas_holgura = [
+        "Actividad", "Nombre", "dij", "ti", "tj", "t*i", "t*j",
+        "Hi", "Hj", "HTij", "CC",
+    ]
     ayudas_holgura = {
         "Actividad": "Suceso de origen i y suceso de destino j (i-j).",
         "Nombre": "Nombre de la actividad.",
