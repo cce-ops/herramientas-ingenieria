@@ -394,7 +394,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
 
     # --- 1. Diagrama PERT (sucesos y actividades) ---
     st.markdown("**1. Diagrama PERT (sucesos y actividades)**")
-    fig_pert, ax_pert = plt.subplots(figsize=(10, 6))
+    fig_pert, ax_pert = plt.subplots(figsize=(14, 4.8))
 
     # --- Layout jerarquico ramificado (niveles topológicos, x = tiempo, y = rama) ---
     # Las generaciones se calculan IGNORANDO aristas ficticias para que nodos como
@@ -416,7 +416,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     for nivel, nodos in enumerate(generaciones):
         nodos_ord = sorted(nodos, key=lambda n: -t_early.get(n, 0))
         for idx, n in enumerate(nodos_ord):
-            pos_aoa[n] = (nivel * 5.0, -idx * 3.5)
+            pos_aoa[n] = (nivel * 7.5, -idx * 5.5)
 
     # Refinamiento tipo barycenter (2 pasadas) para separar ramas y reducir cruces:
     #   adelante : ordenar cada nivel por la y-media de sus predecesores.
@@ -433,7 +433,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
 
             nodos_ord = sorted(nodos, key=clave_pred)
             for idx, n in enumerate(nodos_ord):
-                pos_aoa[n] = (nivel * 5.0, -idx * 3.5)
+                pos_aoa[n] = (nivel * 7.5, -idx * 5.5)
         for nivel in range(len(generaciones) - 2, -1, -1):
             nodos = generaciones[nivel]
 
@@ -445,7 +445,10 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
 
             nodos_ord = sorted(nodos, key=clave_succ)
             for idx, n in enumerate(nodos_ord):
-                pos_aoa[n] = (nivel * 5.0, -idx * 3.5)
+                pos_aoa[n] = (nivel * 7.5, -idx * 5.5)
+
+    # Radio de los circulos (grande, para que quepan los 4 numeros legibles).
+    radio = 2.0
 
     def _es_critica_aoa(u, v):
         dij = grafo_aoa[u][v].get("te", 0.0)
@@ -469,7 +472,7 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
             t = float(np.dot(p - p0, d) / denom)
             if 0.1 < t < 0.9:
                 dist = float(np.linalg.norm(p - (p0 + t * d)))
-                if dist < 1.8:
+                if dist < radio * 1.2:
                     return 0.35
         return 0.05
 
@@ -480,10 +483,10 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
     #   arriba-der : t*i  (tiempo LAST / mas tarde)
     #   abajo-izq  : t_i  (tiempo EARLY / mas temprano)
     #   abajo-der  : H_i  (holgura = t*i - t_i)
-    radio = 1.5
-    # Offset reducido para separar los 4 numeros entre sí y del borde del circulo.
-    offx = radio * 0.35
-    offy = radio * 0.35
+    # Offset: cada numero se ancla en la esquina de su cuadrante y crece hacia el
+    # centro del circulo, quedando separado del borde y de los otros numeros.
+    offx = radio * 0.55
+    offy = radio * 0.55
     for n, (x, y) in pos_aoa.items():
         circ = plt.Circle(
             (x, y), radio, facecolor="white", edgecolor="black", linewidth=2.2, zorder=3,
@@ -541,12 +544,12 @@ def _pintar_basico(res: dict, fecha_inicio) -> None:
         dx, dy = x1 - x0, y1 - y0
         lon = float(np.hypot(dx, dy))
         nx_, ny_ = (-dy / lon, dx / lon) if lon else (0.0, 1.0)  # normal al borde
-        off_txt = 0.7  # separacion clara de la linea para que se lean letra y numero
+        off_txt = 1.0  # separacion clara de la linea para que se lean letra y numero
         # Fondo blanco para que la letra/numero resalte sobre la linea.
-        bbox = dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="none", alpha=0.85)
+        bbox = dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.9)
         ax_pert.text(
             xm + nx_ * off_txt, ym + ny_ * off_txt, act,
-            ha="center", va="center", fontsize=12, fontweight="bold",
+            ha="center", va="center", fontsize=13, fontweight="bold",
             color=color, zorder=6, bbox=bbox,
         )  # actividad a un lado del borde
         ax_pert.text(
