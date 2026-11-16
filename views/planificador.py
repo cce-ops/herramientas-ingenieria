@@ -1334,7 +1334,9 @@ def _pintar_avanzado(res: dict, fecha_inicio) -> None:
         matriz_z.loc[f"{_fmt_num(t_early[u])}   {u}", str(v)] = _fmt_num(
             datos.get("te", 0)
         )
-    matriz_z.loc["t*i/j"] = [_fmt_num(t_last[n]) for n in nodos]
+    matriz_z.loc["t*i/j"] = [
+        _fmt_num(t_last.get(int(c), 0.0)) for c in columnas
+    ]
     st.dataframe(matriz_z, width="stretch")
     st.caption(
         "Filas: tiempo EARLY (ti) y suceso i · Columnas: suceso j · "
