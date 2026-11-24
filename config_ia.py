@@ -11,14 +11,16 @@ Este modulo concentra TODA la configuracion de IA en un unico sitio:
 Reintentos y modelos de respaldo
 --------------------------------
 Si la llamada a un modelo falla, `evaluar_texto_llm` reintenta el mismo modelo
-esperando unos segundos entre intento e intento. Si se agotan los reintentos,
+(2 reintentos, 3 segundos entre intento e intento). Si se agotan los reintentos,
 pasa al siguiente modelo de la lista y repite el proceso, empezando por el
 modelo que el usuario ha seleccionado y siguiendo el orden de la lista. Si se
 llega al final, vuelve a empezar por el principio.
 
-Los errores que no tienen sentido reintentar (una API Key mal escrita, un
-modelo inexistente) cortan la cadena inmediatamente: reintentar 8 modelos con
-una clave invalida solo Hareia esperar al usuario sin resultado.
+Los errores que no tienen sentido reintentar (una API Key mal escrita, una
+peticion invalida) cortan la cadena inmediatamente: reintentar todos los
+modelos con una clave invalida solo haría esperar al usuario sin resultado.
+Un modelo al que la clave no tiene acceso (403) o que no existe (404) se
+descarta y se pasa directamente al siguiente, sin gastar reintentos en el.
 """
 
 from __future__ import annotations
@@ -41,10 +43,13 @@ MAX_INTENTOS_POR_MODELO = 3
 
 # Codigos de error que no tienen sentido reintentar ni repetir en otro modelo:
 # la peticion es invalida por si sola, pruebes lo que pruebes.
-#   400 peticion incorrecta · 401 clave invalida · 403 sin permiso
-#   404 modelo inexistente · 403/404 también cubren el caso de un nombre de
-#   modelo mal escrito en la lista.
-CODIGOS_SIN_REINTENTO = {400, 401, 403, 404}
+#   400 peticion incorrecta · 401 clave invalida
+CODIGOS_SIN_REINTENTO = {400, 401}
+
+# Codigos que descartan solo el modelo actual: la clave no tiene acceso (403,
+# por ejemplo, un modelo de pago) o el modelo no existe (404). Se pasa al
+# siguiente modelo de la cadena sin consumir los reintentos del actual.
+CODIGOS_SIN_MODELO = {403, 404}
 
 
 # ---------------------------------------------------------------------------
@@ -53,17 +58,14 @@ CODIGOS_SIN_REINTENTO = {400, 401, 403, 404}
 PROVEEDORES: dict[str, dict] = {
     "Google Gemini": {
         "modelos": {
-            "Gemini Flash Latest (Alias actualizado automáticamente)": "gemini-flash-latest",
-            "Gemini 3.8 Flash (Más inteligente, flujos complejos)": "gemini-3.8-flash",
-            "Gemini 3.8 Live (Voz, baja latencia)": "gemini-3.8-live",
-            "Gemini 3.8 Live Extended Thinking (Alto razonamiento)": (
-                "gemini-3.8-live-extended-thinking"
-            ),
-            "Gemini 3.7 Flash (Programación y varios pasos)": "gemini-3.7-flash",
+            "Gemini 4 Hydrogen (Rápido y con capa gratuita)": "gemini-4-hydrogen",
+            "Gemini 4 Carbon (Razonamiento más potente)": "gemini-4-carbon",
+            "Gemini 4 Neon (Inteligencia frontier)": "gemini-4-neon",
+            "Gemini 4 Argon (Eficiente de última generación)": "gemini-4-argon",
+            "Gemini 3.8 Flash (Estable, generación anterior)": "gemini-3.8-flash",
             "Gemini 3.6 Flash (Equilibrio tareas cotidianas)": "gemini-3.6-flash",
-            "Gemini 3.5 Flash (Velocidad para cargas rutinarias)": "gemini-3.5-flash",
             "Gemini 3.5 Flash-Lite (Más rápido y rentable)": "gemini-3.5-flash-lite",
-            "Gemini 3.1 Flash-Lite (Rendimiento Frontier)": "gemini-3.1-flash-lite",
+            "Gemini 3.1 Flash-Lite (Respaldo ligero)": "gemini-3.1-flash-lite",
         },
         "ayuda": "Obtén tu clave en Google AI Studio",
     },
@@ -183,6 +185,13 @@ def _es_error_fatal(excepcion: Exception) -> bool:
     return False
 
 
+def _descarta_modelo(excepcion: Exception) -> bool:
+    """Indica si el modelo actual debe descartarse y probar el siguiente."""
+    if isinstance(excepcion, genai_errors.APIError):
+        return excepcion.code in CODIGOS_SIN_MODELO
+    return False
+
+
 def _llamar_gemini(api_key: str, modelo: str, prompt_sistema: str, texto: str) -> str:
     """Una llamada al modelo. Si va bien, devuelve el texto."""
     client = genai.Client(api_key=api_key)
@@ -209,8 +218,9 @@ def evaluar_texto_llm(
 
     Recorre la cadena de modelos empezando por el seleccionado. Cada modelo se
     intenta hasta `max_intentos` veces, esperando `espera` segundos entre
-    intentos. Al agotar un modelo pasa al siguiente. Los errores no
-    reintentables cortan la cadena.
+    intentos. Al agotar un modelo pasa al siguiente. Los errores de peticion o
+    de clave cortan la cadena; un modelo sin acceso (403) o inexistente (404)
+    se descarta y se pasa al siguiente.
 
     Parameters
     ----------
@@ -269,6 +279,11 @@ def evaluar_texto_llm(
                         intentos=intento,
                         descartados=descartados,
                     )
+
+                # Sin acceso al modelo (403) o modelo inexistente (404): se
+                # descarta y se prueba el siguiente sin gastar reintentos.
+                if _descarta_modelo(exc):
+                    break
 
                 # No es el ultimo intento: se espera y se repite.
                 if intento < max_intentos:

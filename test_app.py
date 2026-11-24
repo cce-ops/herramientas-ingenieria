@@ -433,21 +433,29 @@ def test_solo_google_gemini():
     assert list(opciones) == ["Google Gemini"], opciones
 
 
-def test_los_ocho_modelos_de_gemini_siguen():
-    """La lista de modelos se mantiene tal cual estaba."""
+def test_modelos_de_gemini_actualizados():
+    """Gemini 4 primero; los Gemini 3 estables quedan como respaldo."""
     from config_ia import PROVEEDORES
 
     modelos = list(PROVEEDORES["Google Gemini"]["modelos"].values())
     assert modelos == [
+        "gemini-4-hydrogen",
+        "gemini-4-carbon",
+        "gemini-4-neon",
+        "gemini-4-argon",
         "gemini-3.8-flash",
-        "gemini-3.8-live",
-        "gemini-3.8-live-extended-thinking",
-        "gemini-3.7-flash",
         "gemini-3.6-flash",
-        "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
     ], modelos
+
+
+def test_reintentos_siguen_siendo_dos_y_de_pocos_segundos():
+    """Se mantiene el bucle: 3 intentos (2 reintentos) y 3 s de espera."""
+    import config_ia
+
+    assert config_ia.MAX_INTENTOS_POR_MODELO == 3
+    assert config_ia.ESPERA_REINTENTO_SEG == 3.0
 
 
 def test_cadena_de_respaldo_empieza_en_el_elegido():
@@ -604,6 +612,42 @@ def test_error_de_api_key_no_se_reintenta():
     assert llamadas == ["mA"], llamadas  # solo un intento, un solo modelo
     assert "no tiene sentido reintentar" in r.texto
     assert "API key not valid" in r.texto
+
+
+def test_modelo_sin_acceso_se_descarta_y_pasa_al_siguiente():
+    """Un 403 (modelo de pago sin acceso) salta al siguiente sin reintentar."""
+    import config_ia
+    from google.genai import errors as genai_errors
+
+    llamadas: list[str] = []
+
+    def _llamar(api_key, modelo, prompt, texto):
+        llamadas.append(modelo)
+        if modelo == "mA":
+            raise genai_errors.ClientError(403, {"error": {"message": "no access"}})
+        return "ok desde el respaldo"
+
+    orig_llamar = config_ia._llamar_gemini
+    orig_sleep = config_ia.time.sleep
+    config_ia._llamar_gemini = _llamar
+    config_ia.time.sleep = lambda s: None
+    try:
+        ctx = {
+            "proveedor": "Google Gemini",
+            "api_key": "x",
+            "model_name": "mA",
+            "etiqueta_modelo": "A",
+            "modelos_disponibles": ["mA", "mB"],
+        }
+        r = config_ia.evaluar_texto_llm(ctx, "sys", "txt", max_intentos=3, espera=0)
+    finally:
+        config_ia._llamar_gemini = orig_llamar
+        config_ia.time.sleep = orig_sleep
+
+    assert r.ok, r.texto
+    assert llamadas == ["mA", "mB"], llamadas
+    assert r.descartados == ["mA"]
+    assert r.modelo == "mB"
 
 
 def test_si_falla_todo_avisa_cuantos_modelos():

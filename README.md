@@ -73,17 +73,23 @@ que se conserva aunque se recargue la página.
 
 Si una llamada a Gemini falla, la aplicación **no se rinde**:
 
-1. **Reintenta el mismo modelo** hasta 3 veces, esperando 3 segundos entre
-   intento e intento.
+1. **Reintenta el mismo modelo** hasta 3 intentos (2 reintentos), esperando
+   3 segundos entre intento e intento.
 2. Si se agotan los intentos, **pasa al siguiente modelo** de la lista y repite
    el proceso. La cadena empieza por el modelo elegido y sigue el orden de la
    lista, dando la vuelta al final para que siempre haya alternativas.
 3. Mientras ocurre, el spinner indica en qué modelo y en qué intento va.
 
-Si el fallo no tiene sentido reintentarlo —una API Key incorrecta (401), una
-petición inválida (400) o un modelo inexistente (404)— la cadena **corta
-inmediatamente**. Reintentar 8 modelos con una clave mal escrita solo haría
-esperar al usuario.
+El catálogo arranca con **Gemini 4** (Hydrogen, Carbon, Neon y Argon) y mantiene
+como respaldo los Gemini 3 estables (3.8 Flash, 3.6 Flash, 3.5 Flash-Lite y
+3.1 Flash-Lite). Se han quitado los modelos de voz/Live, que no sirven para
+generar texto con `generateContent`, y los alias y modelos deprecated.
+
+Si el fallo no tiene sentido reintentarlo —una API Key incorrecta (401) o una
+petición inválida (400)— la cadena **corta inmediatamente**. Reintentar todos
+los modelos con una clave mal escrita solo haría esperar al usuario. Un modelo
+al que la clave no tiene acceso (403, por ejemplo uno de pago) o que no existe
+(404) se **descarta sin reintentarlo** y la cadena pasa al siguiente.
 
 Cuando la respuesta viene de un modelo distinto del elegido, o tras varios
 intentos, la aplicación lo avisa explícitamente: con este mecanismo se puede
